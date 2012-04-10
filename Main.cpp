@@ -47,11 +47,11 @@ STOMP::pfnOnStompMessage_t subscription_callback(STOMP::Frame* _frame) {
 	cout << "--Incoming STOMP Frame--" << endl;
 	cout << "  Headers:" << endl;
 	STOMP::hdrmap::iterator it;
-	for ( it = _frame->headers.begin() ; it != _frame->headers.end(); it++ )
+	for ( it = _frame->headers().begin() ; it != _frame->headers().end(); it++ )
 	    cout << "\t" << (*it).first << "\t=>\t" << (*it).second << endl;
 	//
-	cout << "  Body: (size: " << _frame->body.size() << " chars):" << endl;
-	cout << _frame->body << endl;
+	cout << "  Body: (size: " << _frame->body().size() << " chars):" << endl;
+	cout << _frame->body() << endl;
 	return 0;
 }
 
@@ -62,12 +62,11 @@ int main(int argc, char *argv[]) {
     int     stomp_port = 61613;
     
     boost::asio::io_service io_service;
+    io_service.run();
 
     try {
     	// connect to STOMP server
         stomp_client = new BoostStomp(io_service, stomp_host, stomp_port);
-        io_service.run();
-        stomp_client->connect();
 
         // subscribe to a channel
         stomp_client->subscribe(*notifications_topic, (STOMP::pfnOnStompMessage_t) &subscription_callback);
@@ -81,11 +80,11 @@ int main(int argc, char *argv[]) {
 
         // add an outgoing message to the queue
         stomp_client->send(*notifications_topic, headers, body);
-        sleep(1);
+
     } 
     catch (exception& e) 
     {
-        cerr << "Error in PocoStomp: " << e.what() << "\n";
+        cerr << "Error in BoostStomp: " << e.what() << "\n";
         return 1;
     } 
     

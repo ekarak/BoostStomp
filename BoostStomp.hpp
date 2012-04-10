@@ -37,11 +37,15 @@ http://en.wikipedia.org/wiki/GNU_Lesser_General_Public_License
 
 #include <boost/asio.hpp>
 #include <boost/bind.hpp>
+#include <boost/xpressive/xpressive.hpp>
 
 #include "StompFrame.hpp"
 
-// datatypes used inside the FSM
 namespace STOMP {
+
+	using namespace boost::asio;
+	using namespace boost::asio::ip;
+	using namespace boost::xpressive;
 
     // ACK mode
     typedef enum {
@@ -58,15 +62,25 @@ namespace STOMP {
       oss << f << t;
       return oss.str();
     }
-}
-
-using namespace boost::asio;
-using namespace boost::asio::ip;
-
-namespace STOMP {
     
     // Stomp message callback function prototype
     typedef void (*pfnOnStompMessage_t)( Frame* _frame );
+
+
+	static mark_tag tag_command(1), tag_headers(2), tag_body(3);
+	static mark_tag tag_key(1), tag_value(2);
+
+	// this regex finds a STOMP server frame
+	static cregex re_stomp_client_command = as_xpr("CONNECT")  | "DISCONNECT"
+		| "SEND" | "SUBSCRIBE" | "UNSUBSCRIBE"
+		| "BEGIN" | "COMMIT" | "ABORT"
+		| "ACK" | "NACK" ;
+	static cregex re_stomp_server_command = as_xpr("CONNECTED")
+		| "MESSAGE" | "RECEIPT" | "ERROR"
+		| "ACK" | "NACK" ;
+	static cregex re_stomp_server_frame  = bos >> (tag_command= re_stomp_server_command ) >> _n // command and newline
+						>> (tag_headers= -+(-+_ >> ':' >> -+_ >> _n)) >> _n  // tag_headers
+						>> (tag_body= *_) >> eos;
 
     // here we go
     class BoostStomp
@@ -75,29 +89,19 @@ namespace STOMP {
         protected:
         //----------------
             io_service&             m_io_service;
-            tcp::resolver           m_resolver;
-            tcp::socket             m_socket;
+            tcp::socket* 			m_socket;
         //
             std::string             m_hostname;
-            int                      m_port;
-            //Connection*     m_connection;
+            int                     m_port;
             AckMode                 m_ackmode;
             //
-        /*
-            Poco::Thread*           m_thread;
-            Poco::Mutex*             m_mutex;
-            Poco::Mutex*            m_initcond_mutex;
-            Poco::Condition*        m_initcond; */
+
             std::queue<Frame>     m_sendqueue;
             std::map<std::string, pfnOnStompMessage_t>   m_subscriptions;
             //
-            //  Set of valid STOMP server commands
-            std::set<std::string> m_stomp_server_commands;
-	
             // ASIO handlers
-            void handle_resolve(const boost::system::error_code& err, ip::tcp::resolver::iterator endpoint_iterator);
-            void handle_connect(const boost::system::error_code& err, ip::tcp::resolver::iterator endpoint_iterator);
-            void handle_server_response(const boost::system::error_code& err);
+            void handle_server_response(const boost::system::error_code& err, Frame& frame);
+            void handle_subscribe_response(const boost::system::error_code& err, Frame& frame);
             
         //----------------
         private:
@@ -105,15 +109,17 @@ namespace STOMP {
             boost::asio::streambuf stomp_request;
             boost::asio::streambuf stomp_response;
 
-            void notify_callbacks(Frame* _frame);
-        
+            bool send_frame( Frame& _frame );
+            Frame* parse_response(boost::asio::streambuf& rawdata);
+
         //----------------
         public:
         //----------------
-            BoostStomp(boost::asio::io_service& io_service, const std::string& hostname, const int port);
+            //BoostStomp(boost::asio::io_service& io_service, const std::string& hostname, const int port);
+            BoostStomp(boost::asio::io_service& io_service, string& hostname, int& port, AckMode ackmode = ACK_AUTO);
             ~BoostStomp();
             // thread-safe methods called from outside the thread loop
-            bool connect   ();
+
             bool subscribe ( std::string& topic, pfnOnStompMessage_t callback );
             bool send      ( std::string& topic, hdrmap _headers, std::string& body );
             //

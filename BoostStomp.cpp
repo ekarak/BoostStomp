@@ -41,43 +41,88 @@ namespace STOMP {
   // ----------------------------
   // constructor
   // ----------------------------
-  BoostStomp::BoostStomp(boost::asio::io_service& io_service, const std::string& hostname, const int port):
+  BoostStomp::BoostStomp(boost::asio::io_service& io_service, string& hostname, int& port, AckMode ackmode /*= ACK_AUTO*/):
     m_io_service(io_service),
-    m_resolver(io_service),
-    m_socket(io_service),
     m_hostname(hostname),
     m_port(port),
-    m_ackmode(ACK_AUTO)
+    m_ackmode(ackmode)
   // ----------------------------
   {
-    // initiate STOMP server resolution
-    tcp::resolver::query _query(m_hostname, to_string<int>(m_port, std::dec), boost::asio::ip::resolver_query_base::numeric_service);
-    m_resolver.async_resolve( _query, 
-      boost::bind(
-        &BoostStomp::handle_resolve, 
-        this, 
-        boost::asio::placeholders::error, 
-        boost::asio::placeholders::iterator
-    ));
+	m_socket = new tcp::socket(io_service);
+
+    // initiate STOMP server hostname resolution
+    tcp::resolver::query 	query(m_hostname, to_string<int>(m_port, std::dec), boost::asio::ip::resolver_query_base::numeric_service);
+    // Get a list of endpoints corresponding to the server name.
+    tcp::resolver 			resolver(m_io_service);
+    tcp::resolver::iterator endpoint_iterator = resolver.resolve(query);
+    tcp::resolver::iterator end;
+
+    // Try each endpoint until we successfully establish a connection.
+    boost::system::error_code error = boost::asio::error::host_not_found;
+    while (error && endpoint_iterator != end)
+    {
+      m_socket->close();
+      m_socket->connect(*endpoint_iterator++, error);
+    }
+    if (error)
+      throw boost::system::system_error(error);
+
+    //
+    cout << "TCP connection to " << m_hostname << " successful!\n";
+
+    // now we are connected to STOMP server's TCP port/
+    // The protocol negotiation phase requires we send a CONNECT frame
+
+    // The connection was successful. Send the CONNECT request.
+    Frame frame( "CONNECT" );
+    boost::asio::write( *m_socket, frame.encode_request() );
+    // Wait for server response ("CONNECTED")
+    //boost::asio::read_until( *m_socket, frame.response,  "\n\n");
+    boost::asio::read_until( *m_socket, frame.response,  "\0");
+
+    /*if (frame.response == "CONNECTED") {
+    	cout << "STOMP connection to " << m_hostname << " successful!\n";
+    }*/
+
+  }
+
+  BoostStomp::~BoostStomp() {
+	  delete m_socket;
+  }
+
+  bool BoostStomp::subscribe( string& topic, pfnOnStompMessage_t callback )
+  {
+	  hdrmap hm;
+	  hm["destination"] = topic;
+	  Frame frame( "SUBSCRIBE", hm );
+	  m_subscriptions[topic] = callback;
+	  return(send_frame(frame));
   }
   
-  bool BoostStomp::connect()
+  bool BoostStomp::send( string& topic, hdrmap _headers, std::string& body )
   {
-    return(0);
+	  _headers["destination"] = topic;
+	  Frame frame( "SEND", _headers, body );
+	  return(send_frame(frame));
   }
-    
-  bool BoostStomp::subscribe( std::string& topic, pfnOnStompMessage_t callback )
+
+  bool BoostStomp::send_frame( Frame& frame )
   {
-    return(0);
-  }
-  
-  bool BoostStomp::send( std::string& topic, hdrmap _headers, std::string& body )
-  {
-    return(0);
-  }
-  
-  void BoostStomp::notify_callbacks(Frame* _frame)
-  {
+	 // io_service.post(boost::bind(&BoostStomp::do_write, this, msg));
+	  boost::asio::write( *m_socket, frame.encode_request() );
+	  // Wait for server response
+	  boost::asio::async_read_until(
+		  *m_socket,
+		  frame.response,
+		  "\0", // "\n\n"
+		  boost::bind(
+			  &BoostStomp::handle_server_response,
+			  this,
+			  boost::asio::placeholders::error,
+			  frame
+		  )
+	   );
+	  return(true);
   }
 
   // ----------------------------
@@ -85,71 +130,79 @@ namespace STOMP {
   // ----------------------------
   {
   #ifdef DEBUG_STOMP
-      std::cout << "FSM DEBUG: " << message << std::endl;
+      std::cout << "DEBUG: " << message << std::endl;
   #endif
   }
     
   // ----------------------------
-  // private:
+  // ASIO HANDLERS (protected)
+  // ----------------------------
+
   
   // ----------------------------
-  void BoostStomp::handle_resolve(const boost::system::error_code& err, tcp::resolver::iterator endpoint_iterator)
+  void BoostStomp::handle_server_response(const boost::system::error_code& err, Frame& frame) {
   // ----------------------------
-  {
-    if (!err)
-    {
-      // Attempt a connection to the first endpoint in the list. Each endpoint
-      // will be tried until we successfully establish a connection.
-      ip::tcp::endpoint endpoint = *endpoint_iterator;
-      m_socket.async_connect( endpoint, boost::bind(
-          &BoostStomp::handle_connect, 
-          this,
-          boost::asio::placeholders::error, 
-          ++endpoint_iterator
-      ));
-    }
-    else
-    {
-      std::cout << "Error: " << err.message() << "\n";
-    }
+	  if (!err)
+	  {
+		  std::cout << "received server response: " << frame.response.size() << " bytes" << endl;
+		  std::cout << &(frame.response);
+		  Frame* rcvd_frame = parse_response(frame.response);
+		  if (rcvd_frame) {
+			  if (rcvd_frame->command() == "MESSAGE") {
+				  string* dest = new string(rcvd_frame->headers()["destination"]);
+				  std::cout << "notify_callbacks dest=" << dest << std::endl;
+				  //
+				  if (pfnOnStompMessage_t callback_function = m_subscriptions[*dest]) {
+					  callback_function(rcvd_frame);
+				  };
+			  }
+			  // dispose frame, its not needed anymore
+			  delete rcvd_frame;
+		  } else {
+			std::cerr << "ERRROR in handle_Server_response" << endl;
+		  }
+	  }
   }
-  
+
   // ----------------------------
-  void BoostStomp::handle_connect (const boost::system::error_code& err,  ip::tcp::resolver::iterator endpoint_iterator)
+  void BoostStomp::handle_subscribe_response(const boost::system::error_code& err, Frame& frame) {
   // ----------------------------
-  {
-    if (!err)
-    {
-      // The connection was successful. Send the CONNECT request.
-      Frame _frame("CONNECT");
-      boost::asio::write(m_socket, _frame.encoded().c_str());
-      // Wait for server response
-      boost::asio::async_read_until(m_socket, stomp_response, "\n\n",
-          boost::bind(&BoostStomp::handle_server_response, this,
-          boost::asio::placeholders::error
-      ));
-    }
-    else if (endpoint_iterator != ip::tcp::resolver::iterator())
-    {
-      // The connection was unsuccessful. Close socket and retry.
-      m_socket.close();
-      tcp::endpoint endpoint = *endpoint_iterator;
-      m_socket.async_connect(endpoint,
-          boost::bind(&BoostStomp::handle_connect, this,
-            boost::asio::placeholders::error, ++endpoint_iterator));
-    }
+	if (!err)
+	{
+	  std::cout << "received server response: " << frame.response.size() << " bytes" << endl;
+	  std::cout << &(frame.response);
+
+	} else {
+		std::cerr << "ERRROR in handle_Server_response" << endl;
+	  //
+	}
   }
-  
+
   // ----------------------------
-  void handle_server_response(const boost::system::error_code& err)
+  Frame* BoostStomp::parse_response(boost::asio::streambuf& rawdata) {
   // ----------------------------
-  {
-    if (!err)
-    {
-      //
-    } else {
-      
-      //
-    }
-  }
+	    cmatch regex_match;
+	    std::istream is(&rawdata);
+	    std::string str;
+	    is >> str;
+	    if( regex_search( str.c_str(), regex_match, re_stomp_server_frame ) )
+	    {
+	    	// construct header map from match
+	    	hdrmap headermap;
+	        std::string str = std::string(regex_match[tag_headers]);
+	        sregex header_token = (tag_key= -+alnum) >> ':' >> (tag_value= -+alnum) >> _n;
+	        sregex_iterator cur( str.begin(), str.end(), header_token );
+	        sregex_iterator end;
+			for( ; cur != end; ++cur ) {
+				smatch const &h = *cur;
+				headermap[h[tag_key]] = h[tag_value];
+			}
+			// construct new Frame, return it
+	        return(new Frame(regex_match[tag_command], headermap, regex_match[tag_body]));
+	    } else {
+	        std::cout << "NO MATCH!" << std::endl;
+	    }
+	    return(NULL);
+  };
+
 } // end namespace STOMP

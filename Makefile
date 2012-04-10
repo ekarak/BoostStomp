@@ -32,7 +32,7 @@ INCLUDES := -I .
 
 all: main
         
-BoostStomp.o:  BoostStomp.cpp BoostStomp.hpp 
+BoostStomp.o:  BoostStomp.cpp BoostStomp.hpp StompFrame.hpp
 	g++ $(CFLAGS) -c BoostStomp.cpp $(INCLUDES)    
 
 Main.o: Main.cpp 
@@ -40,7 +40,8 @@ Main.o: Main.cpp
 	
 main:   Main.o  BoostStomp.o 
 	$(LD) -o $@ $(LDFLAGS) Main.o BoostStomp.o
-
+#	upx main
+	
 dist:	main
 	rm -f BoostStomp.tar.gz
 	tar -c --exclude=".git" --exclude ".svn" --exclude "*.o" -hvzf BoostStomp.tar.gz *.cpp *.h *.hpp Makefile license/ README*
