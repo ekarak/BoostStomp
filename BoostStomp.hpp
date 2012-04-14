@@ -36,7 +36,10 @@ http://en.wikipedia.org/wiki/GNU_Lesser_General_Public_License
 #include <set>
 
 #include <boost/asio.hpp>
-#include <boost/bind.hpp>
+#include <boost/asio/deadline_timer.hpp>
+#include <boost/shared_ptr.hpp>
+#include <boost/thread.hpp>
+#include <boost/thread/mutex.hpp>
 #include <boost/xpressive/xpressive.hpp>
 
 #include "StompFrame.hpp"
@@ -66,57 +69,70 @@ namespace STOMP {
     // Stomp message callback function prototype
     typedef void (*pfnOnStompMessage_t)( Frame* _frame );
 
-
-	static mark_tag tag_command(1), tag_headers(2), tag_body(3);
-	static mark_tag tag_key(1), tag_value(2);
-
-	// this regex finds a STOMP server frame
-	static cregex re_stomp_client_command = as_xpr("CONNECT")  | "DISCONNECT"
-		| "SEND" | "SUBSCRIBE" | "UNSUBSCRIBE"
-		| "BEGIN" | "COMMIT" | "ABORT"
-		| "ACK" | "NACK" ;
-	static cregex re_stomp_server_command = as_xpr("CONNECTED")
-		| "MESSAGE" | "RECEIPT" | "ERROR"
-		| "ACK" | "NACK" ;
-	static cregex re_stomp_server_frame  = bos >> (tag_command= re_stomp_server_command ) >> _n // command and newline
-						>> (tag_headers= -+(-+_ >> ':' >> -+_ >> _n)) >> _n  // tag_headers
-						>> (tag_body= *_) >> eos;
-
     // here we go
+	// -------------
     class BoostStomp
+    // -------------
     {        
         //----------------
         protected:
         //----------------
-            io_service&             m_io_service;
-            tcp::socket* 			m_socket;
-        //
-            std::string             m_hostname;
-            int                     m_port;
-            AckMode                 m_ackmode;
-            //
 
-            std::queue<Frame>     m_sendqueue;
+            std::queue<Frame>   m_sendqueue;
+            boost::mutex        m_sendqueue_mutex;
             std::map<std::string, pfnOnStompMessage_t>   m_subscriptions;
+
+
+			deadline_timer*	m_heartbeat_timer;
+
+		 	tcp::socket* 		m_socket;
+        //
+            std::string         m_hostname;
+            int                 m_port;
+            AckMode             m_ackmode;
             //
-            // ASIO handlers
-            void handle_server_response(const boost::system::error_code& err, Frame& frame);
-            void handle_subscribe_response(const boost::system::error_code& err, Frame& frame);
-            
+            bool		m_stopped;
+            bool		m_connected;
+
+            boost::shared_ptr< io_service > 	m_io_service;
+			//boost::shared_ptr< io_service::work > m_io_service_work;
+
         //----------------
         private:
         //----------------
             boost::asio::streambuf stomp_request;
             boost::asio::streambuf stomp_response;
+            boost::mutex 			stream_mutex;
+            boost::thread*		worker_thread;
 
             bool send_frame( Frame& _frame );
-            Frame* parse_response(boost::asio::streambuf& rawdata);
+            vector<Frame*> 	parse_response	();
+            Frame* 			parse_frame		(smatch const framestr);
+            //
 
+            void consume_frame(Frame& _rcvd_frame);
+
+            void start(tcp::resolver::iterator endpoint_iter);
+            void stop();
+
+            void start_connect(tcp::resolver::iterator endpoint_iter);
+            void handle_connect(const boost::system::error_code& ec, tcp::resolver::iterator endpoint_iter);
+
+            void start_stomp_connect(tcp::resolver::iterator endpoint_iter);
+            void start_stomp_heartbeat();
+
+            void start_stomp_read();
+            void handle_stomp_read(const boost::system::error_code& ec);
+
+            void start_stomp_write();
+            void handle_stomp_write(const boost::system::error_code& ec);
+
+            void worker( boost::shared_ptr< boost::asio::io_service > io_service );
         //----------------
         public:
         //----------------
             //BoostStomp(boost::asio::io_service& io_service, const std::string& hostname, const int port);
-            BoostStomp(boost::asio::io_service& io_service, string& hostname, int& port, AckMode ackmode = ACK_AUTO);
+            BoostStomp(string& hostname, int& port, AckMode ackmode = ACK_AUTO);
             ~BoostStomp();
             // thread-safe methods called from outside the thread loop
 
@@ -126,8 +142,11 @@ namespace STOMP {
             //BoostStompState& get_state() { return m_fsm.getState(); };
             AckMode get_ackmode() { return m_ackmode; };
             //
-            void debug_print(std::string message);
     }; //class
     
+    // helper function
+    void hexdump(const void *ptr, int buflen);
 }
+
+
 #endif

@@ -21,7 +21,7 @@ RELEASE_CFLAGS  := -Wall -Wno-unknown-pragmas -Wno-format -O3 -DNDEBUG
 DEBUG_LDFLAGS	:= -g
 
 CFLAGS	:= -c $($(TARGET)_CFLAGS) 
-LDFLAGS	:= $($(TARGET)_LDFLAGS) -L/usr/lib/ -L/usr/local/lib -lboost_system
+LDFLAGS	:= $($(TARGET)_LDFLAGS) -L/usr/lib/ -L/usr/local/lib -lboost_system -lboost_thread
 INCLUDES := -I .
 
 %.o : %.cpp

@@ -23,16 +23,28 @@ namespace STOMP {
       hdrmap    m_headers;
       string    m_body;
 
-    public:
-      boost::asio::streambuf request, response;
+      boost::asio::streambuf request;
 
+    public:
       // constructors
-      Frame(string cmd) 					: m_command(cmd) {};
-      Frame(string cmd, hdrmap h) 			: m_command(cmd), m_headers(h) {};
-      Frame(string cmd, hdrmap h, string b) : m_command(cmd), m_headers(h), m_body(b) {};
+      Frame(string cmd):
+    	  m_command(cmd)
+      {};
+
+      Frame(string cmd, hdrmap h):
+    	  m_command(cmd),
+    	  m_headers(h)
+      {};
+
+      Frame(string cmd, hdrmap h, string b):
+    	  m_command(cmd),
+    	  m_headers(h),
+    	  m_body(b)
+      {};
 
       // copy constructor
       Frame(const Frame& other)  {
+    	  //cout<<"Frame copy constructor called" <<endl;
           m_command = other.m_command;
           m_headers = other.m_headers;
           m_body = other.m_body;
@@ -42,9 +54,7 @@ namespace STOMP {
       hdrmap headers()  { return m_headers; };
       string body()	 	{ return m_body; };
 
-      // encode_request: return the encoded frame as an ASIO streambuf
-      // -------------------------------------
-      boost::asio::streambuf& encode_request()
+      void encode()
       // -------------------------------------
       {
     	// prepare an output stream
@@ -73,13 +83,7 @@ namespace STOMP {
         }
         // write terminating NULL char
         request.sputc('\0');
-        // return the request streambuf
-        return(request);
       };
-
-
-
-  
     }; // class Frame
     
 } // namespace STOMP

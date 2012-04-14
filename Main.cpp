@@ -58,15 +58,12 @@ STOMP::pfnOnStompMessage_t subscription_callback(STOMP::Frame* _frame) {
 // -----------------------------------------
 int main(int argc, char *argv[]) {
 // -----------------------------------------
-    string  stomp_host = string("localhost");
+    string  stomp_host = "localhost";
     int     stomp_port = 61613;
-    
-    boost::asio::io_service io_service;
-    io_service.run();
 
     try {
     	// connect to STOMP server
-        stomp_client = new BoostStomp(io_service, stomp_host, stomp_port);
+        stomp_client = new BoostStomp(stomp_host, stomp_port);
 
         // subscribe to a channel
         stomp_client->subscribe(*notifications_topic, (STOMP::pfnOnStompMessage_t) &subscription_callback);
@@ -80,7 +77,7 @@ int main(int argc, char *argv[]) {
 
         // add an outgoing message to the queue
         stomp_client->send(*notifications_topic, headers, body);
-
+        while (1) sleep(1);
     } 
     catch (exception& e) 
     {
