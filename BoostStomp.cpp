@@ -22,12 +22,16 @@ for more information on the LGPL, see:
 http://en.wikipedia.org/wiki/GNU_Lesser_General_Public_License
 */
 
-#include <cstdlib>
-#include <deque>
+// based on the ASIO async TCP client example found on Boost documentation:
+// http://www.boost.org/doc/libs/1_46_1/doc/html/boost_asio/example/timeouts/async_tcp_client.cpp
+
+// #include <cstdlib>
+// #include <deque>
 #include <iostream>
 #include <boost/bind.hpp>
 #include <boost/asio.hpp>
 #include <boost/asio/buffer.hpp>
+#include <boost/format.hpp>
 #include "BoostStomp.hpp"
 
 namespace STOMP {
@@ -63,6 +67,7 @@ namespace STOMP {
   // constructor
   // ----------------------------
   BoostStomp::BoostStomp(string& hostname, int& port, AckMode ackmode /*= ACK_AUTO*/):
+  // ----------------------------
     m_hostname(hostname),
     m_port(port),
     m_ackmode(ackmode),
@@ -71,25 +76,29 @@ namespace STOMP {
   // ----------------------------
   {
 	m_io_service = boost::shared_ptr< io_service > ( new io_service  );
-	//m_io_service_work = boost::shared_ptr< io_service::work > ( new io_service::work( *m_io_service ) );
-
-	m_heartbeat_timer = new  deadline_timer(*m_io_service );
+	m_heartbeat_timer = boost::shared_ptr< deadline_timer> ( new deadline_timer( *m_io_service ));
+	std::ostream os( &m_heartbeat);
+	os << "\n";
 
 	m_socket = new tcp::socket(*m_io_service);
-
 	tcp::resolver 			resolver(*m_io_service);
-	// engage!
+	// start the asynchronous resolver
 	start(resolver.resolve(tcp::resolver::query(
 			m_hostname,
 			to_string<int>(m_port, std::dec),
 			boost::asio::ip::resolver_query_base::numeric_service)
 	));
-
+	// engage!
 	worker_thread = new boost::thread( boost::bind( &BoostStomp::worker, this, m_io_service ) );
-
   }
 
-  BoostStomp::~BoostStomp() {
+
+  // ----------------------------
+  // destructor
+  // ----------------------------
+  BoostStomp::~BoostStomp()
+  // ----------------------------
+  {
 	  worker_thread->interrupt();
 	  delete m_socket;
   }
@@ -104,24 +113,25 @@ namespace STOMP {
 	  string str;
 	  //
 	  // get all the responses in response stream
-	  std::cout << "[" << boost::this_thread::get_id() << "] parse_response before: (" << stomp_response.size() << " bytes in stomp_response)" << endl;
+	  debug_print(boost::format("parse_response before: (%1% bytes in stomp_response)") % stomp_response.size() );
 	  //
 	  // iterate over all frame matches
 	  //
 	  while ( std::getline( response_stream, str, '\0' ) ) {
-		  std::cout << "[" << boost::this_thread::get_id() << "] parse_response in loop: (" << stomp_response.size() << " bytes in stomp_response)" << endl;
+		  debug_print(boost::format("parse_response in loop: (%1% bytes in stomp_response)") % stomp_response.size());
+
 		  if ( regex_match(str, frame_match, re_stomp_server_frame ) ) {
 			  Frame* next_frame = parse_frame(frame_match);
 			  if (next_frame) {
 				  results.push_back(next_frame);
 			  }
-			  cout << "[" << boost::this_thread::get_id() << "] parse_response matched frame:" << endl;
 		  } else {
-			  cout << "[" << boost::this_thread::get_id() << "] parse_response mismatched frame! was:" << endl;
+			  debug_print(boost::format("parse_response error: mismatched frame: \n%1%") % str);
+			  hexdump(str.c_str(), str.length());
 		  }
-		  hexdump(str.c_str(), str.length());
+
 	  }
-	  cout << "exiting, " << stomp_response.size() << " bytes still in stomp_response" << endl;
+	  //cout << "exiting, " << stomp_response.size() << " bytes still in stomp_response" << endl;
       return(results);
   };
 
@@ -131,11 +141,11 @@ namespace STOMP {
   {
 	  	hdrmap hm;
 		size_t framesize = frame_match.length(0);
-		std::cout << "[" << boost::this_thread::get_id() << "] -- parse_frame, frame size:" << framesize  << " bytes" << endl;
+		debug_print(boost::format("-- parse_frame, frame size: %1% bytes") % framesize);
 		hexdump(frame_match.str(0).c_str(), framesize);
 		stomp_response.consume(framesize);
 
-		std::cout << "Command:" << frame_match[command] << std::endl;
+		//std::cout << "Command:" << frame_match[command] << std::endl;
 		// break down headers
 		std::string h = std::string(frame_match[headers]);
 
@@ -154,16 +164,18 @@ namespace STOMP {
   };
 
   void BoostStomp::consume_frame(Frame& _rcvd_frame) {
-	  std::cout << "[" << boost::this_thread::get_id() << "] -- recevied frame:" << _rcvd_frame.command()  << endl;
+	  debug_print(boost::format("-- consume_frame: received %1%") % _rcvd_frame.command());
 	  if (_rcvd_frame.command() == "CONNECTED") {
 		  m_connected = true;
 		  start_stomp_write();
+		  start_stomp_heartbeat();
 	  }
 	  if (_rcvd_frame.command() == "MESSAGE") {
 		  string* dest = new string(_rcvd_frame.headers()["destination"]);
-		  std::cout << "[" << boost::this_thread::get_id() << " notify_callbacks dest=" << dest << std::endl;
 		  //
 		  if (pfnOnStompMessage_t callback_function = m_subscriptions[*dest]) {
+			  debug_print("-- consume_frame: firing callback");
+			  //
 			  callback_function(&_rcvd_frame);
 		  };
 	  };
@@ -204,6 +216,7 @@ namespace STOMP {
   // The endpoint iterator will have been obtained using a tcp::resolver.
   void BoostStomp::start(tcp::resolver::iterator endpoint_iter)
   {
+	debug_print("BoostStomp starting...");
     // Start the connect actor.
     start_connect(endpoint_iter);
   }
@@ -213,6 +226,7 @@ namespace STOMP {
   // response to graceful termination or an unrecoverable error.
   void BoostStomp::stop()
   {
+	debug_print("BoostStomp stopping...");
     m_stopped = true;
     m_socket->close();
     m_heartbeat_timer->cancel();
@@ -230,7 +244,7 @@ namespace STOMP {
   {
     if (endpoint_iter != tcp::resolver::iterator())
     {
-      std::cout << "Trying " << endpoint_iter->endpoint() << "...\n";
+      debug_print(boost::format("Trying %1%...") % endpoint_iter->endpoint() );
 
       // Start the asynchronous connect operation.
       m_socket->async_connect(endpoint_iter->endpoint(),
@@ -257,7 +271,8 @@ namespace STOMP {
      // the timeout handler must have run first.
      if (!m_socket->is_open())
      {
-       std::cout << "Connect timed out\n";
+       std::cerr << "Connect timed out\n";
+       debug_print(boost::format("TCP Connection to %1% timed out!!!") %  endpoint_iter->endpoint() );
 
        // Try the next available endpoint.
        start_connect(++endpoint_iter);
@@ -277,18 +292,18 @@ namespace STOMP {
      // Otherwise we have successfully established a connection.
      else
      {
-       std::cout << "Connected to " << endpoint_iter->endpoint() << "\n";
+       debug_print(boost::format("TCP connection to %1% is active") %  endpoint_iter->endpoint() );
 
        // now we are connected to STOMP server's TCP port/
        // The protocol negotiation phase requires we send a CONNECT frame
 
-       // The connection was successful. SEND the CONNECT request immediately.
+       // The connection was successful. Send the CONNECT request immediately.
        Frame frame( "CONNECT" );
        frame.encode();
        boost::asio::write(*m_socket, frame.request);
 
-       // start the reading actor so as to receive the CONNECTED frame,
-       // and the read handler will also start the writing actor, stomp_write()
+       // Start the reading actor so as to receive the CONNECTED frame,
+       // The read handler will also start the writing actor, stomp_write()
        start_stomp_read();
      }
    }
@@ -301,7 +316,7 @@ namespace STOMP {
   void BoostStomp::start_stomp_read()
   // -----------------------------------------------
   {
-	cout << "start_stomp_read" << endl;
+	debug_print("start_stomp_read");
     // Start an asynchronous operation to read a null-delimited message.
     boost::asio::async_read_until(
     	*m_socket,
@@ -321,7 +336,7 @@ namespace STOMP {
 
     if (!ec)
     {
-    	std::cout << "[" << boost::this_thread::get_id() << "] received server response: " << stomp_response.size() << " bytes" << endl;
+    	debug_print(boost::format("received server response (%1% bytes)") %  stomp_response.size()  );
 		vector<Frame*> received_frames = parse_response();
 		while ((!received_frames.empty()) && (frame = received_frames.back())) {
 		  consume_frame(*frame);
@@ -334,8 +349,7 @@ namespace STOMP {
     }
     else
     {
-      std::cout << "Error on receive: " << ec.message() << "\n";
-
+      std::cerr << "BoostStomp: Error on receive: " << ec.message() << "\n";
       stop();
     }
   }
@@ -360,7 +374,7 @@ namespace STOMP {
     while (m_sendqueue.size() > 0) {
     	Frame& frame = m_sendqueue.front();
     	frame.encode();
-    	cout << "Sending " << frame.command() << endl;
+    	debug_print(boost::format("Sending %1% frame...") %  frame.command()  );
         boost::asio::async_write(
         		*m_socket,
         		frame.request,
@@ -372,19 +386,33 @@ namespace STOMP {
   }
 
   // -----------------------------------------------
-  void BoostStomp::start_stomp_heartbeat()
+  void BoostStomp::handle_stomp_write(const boost::system::error_code& ec)
   // -----------------------------------------------
   {
-	    // Start an asynchronous operation to send a heartbeat message.
-	   /* boost::asio::async_write(
-	    		*m_socket,
-	    		boost::asio::buffer("\n", 1),
-	    		boost::bind(&BoostStomp::handle_stomp_write, this, _1)
-	    ); */
+	    if (m_stopped)
+	      return;
+
+	  if (ec) {
+		  std::cout << "Error writing to STOMP server: " << ec.message() << "\n";
+		  stop();
+	  }
   }
 
   // -----------------------------------------------
-  void BoostStomp::handle_stomp_write(const boost::system::error_code& ec)
+  void BoostStomp::start_stomp_heartbeat()
+  // -----------------------------------------------
+  {
+			// Start an asynchronous operation to send a heartbeat message.
+			debug_print("Sending heartbeat...");
+			boost::asio::async_write(
+					*m_socket,
+					m_heartbeat,
+					boost::bind(&BoostStomp::handle_stomp_heartbeat, this, _1)
+			);
+  }
+
+  // -----------------------------------------------
+  void BoostStomp::handle_stomp_heartbeat(const boost::system::error_code& ec)
   // -----------------------------------------------
   {
     if (m_stopped)
@@ -392,15 +420,18 @@ namespace STOMP {
 
     if (!ec)
     {
-    	cout << "sending heartbeat" << endl;
       // Wait 10 seconds before sending the next heartbeat.
       m_heartbeat_timer->expires_from_now(boost::posix_time::seconds(10));
-      m_heartbeat_timer->async_wait(boost::bind(&BoostStomp::start_stomp_heartbeat, this));
+      m_heartbeat_timer->async_wait(
+    		  boost::bind(
+    				 &BoostStomp::start_stomp_heartbeat,
+    				 this
+    		  )
+      );
     }
     else
     {
-      std::cout << "Error on heartbeat: " << ec.message() << "\n";
-
+      std::cout << "Error on sending heartbeat: " << ec.message() << "\n";
       stop();
     }
   }
@@ -429,36 +460,46 @@ namespace STOMP {
 	  return(send_frame(frame));
   }
 
-
   //-----------------------------------------
   bool BoostStomp::send_frame( Frame& frame )
   //-----------------------------------------
   {
 	  smatch tmp;
 	  if (!regex_match(frame.command(), tmp, re_stomp_client_command)) {
-		  std::cout << "invalid frame command: " << frame.command() << endl;
+		  debug_print(boost::format("send_frame: Invalid frame command (%1%)") %  frame.command() );
 		  exit(1);
 	  }
 
-	  std::cout << "[" << boost::this_thread::get_id() << "] send_frame (" << frame.command() << ")" << endl;
+	  debug_print(boost::format("send_frame: Adding %1% frame to send queue...") %  frame.command() );
 	  m_sendqueue_mutex.lock();
 	  m_sendqueue.push(frame);
 	  m_sendqueue_mutex.unlock();
-	  start_stomp_write();
 	  return(true);
   }
 
   void BoostStomp::worker( boost::shared_ptr< boost::asio::io_service > io_service )
   {
-          //global_stream_lock.lock();
-          std::cout << "[" << boost::this_thread::get_id() << "] Thread Start" << std::endl;
-          //global_stream_lock.unlock();
+	  debug_print("Thread Start");
+	  io_service->run();
+	  debug_print("Thread Finish");
+  }
 
-          io_service->run();
+  boost::mutex global_stream_lock;
+  void debug_print(boost::format& fmt) {
+#ifdef DEBUG_STOMP
+	    global_stream_lock.lock();
+	    std::cout << "[" << boost::this_thread::get_id() << "] " << fmt.str() << endl;
+	    global_stream_lock.unlock();
+#endif
+  }
 
-          //global_stream_lock.lock();
-          std::cout << "[" << boost::this_thread::get_id()
-                  << "] Thread Finish" << std::endl;
-          //global_stream_lock.unlock();
+  void debug_print(string& str) {
+	  boost::format fmt = boost::format(str.c_str());
+	  debug_print(fmt);
+  }
+
+  void debug_print(const char* cstr) {
+	  boost::format fmt = boost::format(cstr);
+  	  debug_print(fmt);
   }
 } // end namespace STOMP

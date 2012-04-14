@@ -82,9 +82,6 @@ namespace STOMP {
             boost::mutex        m_sendqueue_mutex;
             std::map<std::string, pfnOnStompMessage_t>   m_subscriptions;
 
-
-			deadline_timer*	m_heartbeat_timer;
-
 		 	tcp::socket* 		m_socket;
         //
             std::string         m_hostname;
@@ -104,6 +101,8 @@ namespace STOMP {
             boost::asio::streambuf stomp_response;
             boost::mutex 			stream_mutex;
             boost::thread*		worker_thread;
+            boost::shared_ptr<deadline_timer>	m_heartbeat_timer;
+            boost::asio::streambuf m_heartbeat;
 
             bool send_frame( Frame& _frame );
             vector<Frame*> 	parse_response	();
@@ -120,6 +119,7 @@ namespace STOMP {
 
             void start_stomp_connect(tcp::resolver::iterator endpoint_iter);
             void start_stomp_heartbeat();
+            void handle_stomp_heartbeat(const boost::system::error_code& ec);
 
             void start_stomp_read();
             void handle_stomp_read(const boost::system::error_code& ec);
@@ -146,6 +146,9 @@ namespace STOMP {
     
     // helper function
     void hexdump(const void *ptr, int buflen);
+    void debug_print(boost::format& fmt);
+    void debug_print(string& str);
+    void debug_print(const char* str);
 }
 
 
