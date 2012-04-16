@@ -461,7 +461,7 @@ namespace STOMP {
   bool BoostStomp::send_frame( Frame& frame )
   //-----------------------------------------
   {
-	  smatch tmp;
+	  xpressive::smatch tmp;
 	  if (!regex_match(frame.command(), tmp, re_stomp_client_command)) {
 		  debug_print(boost::format("send_frame: Invalid frame command (%1%)") %  frame.command() );
 		  exit(1);

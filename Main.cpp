@@ -70,9 +70,9 @@ int main(int argc, char *argv[]) {
 
         // construct a headermap
         STOMP::hdrmap headers;
-        headers["header1"] = string("value1").c_str();
-        headers["header2:withcolon"] = string("value2").c_str();
-        headers["header3"] = string("value3").c_str();
+        headers["header1"] = string("value1");
+        headers["header2:withcolon"] = string("value2");
+        headers["header3"] = string("value3");
         string body = string("this is the main message body");
 
         // add an outgoing message to the queue

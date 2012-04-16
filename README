@@ -1,2 +1,47 @@
-BoostStomp: A simple C++ STOMP client ( http://stomp.github.com ), 
-written with standard STL and the boost::asio library
+/************
+BoostStomp
+/************
+A simple C++ STOMP client ( http://stomp.github.com ), 
+written with standard STL and boost ( http://www.boost.org )
+
+For Debian, the packages you'll be needing in order to compile are:
+
+libboost1.xx-dev (Boost base files)
+libboost_system1.xx (1.xx==depending on your Debian version) 
+libboost_system1.xx-dev
+libboost_thread1.xx (thread support)
+libboost_thread1.xx-dev
+
+There is an example of usage, in Main.cpp. It gets built by default, 
+along with the shared & static versions of the booststomp library.
+Usage is simple: construct a BoostStomp object passing it the hostname 
+and port of the STOMP server:
+
+	string  stomp_host = "localhost";
+	int     stomp_port = 61613;
+        stomp_client = new BoostStomp(stomp_host, stomp_port);
+
+subscribe to a channel, and pass in a callback for the handling of any messages of interest:
+
+	string  notifications_topic = "/queue/zwave/monitor";
+        stomp_client->subscribe(*notifications_topic, (STOMP::pfnOnStompMessage_t) &subscription_callback);
+
+send a STOMP frame, adding in any headers you like:
+ 
+        STOMP::hdrmap headers;
+        headers["header1"] = string("value1");
+        headers["header2:withcolon"] = string("value2");
+        headers["header3"] = string("value3");
+        string body = string("this is the main message body");
+
+        // add an outgoing message to the queue
+        stomp_client->send(*notifications_topic, headers, body);
+	
+You must remember at all times that since we are using an asynchronous i/o
+model,  any messages sent via BoostStomp are _not_ guaranteed to succeed.
+
+Future versions of the library will support overloaded versions with completion
+callbacks (following th boost::asio model).
+
+April 2012,
+Elias Karakoulakis
