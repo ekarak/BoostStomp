@@ -57,6 +57,7 @@ std::string to_string(T t, std::ios_base & (*f)(std::ios_base&))
 
 namespace STOMP {
 
+	using namespace boost;
 	using namespace boost::asio;
 	using namespace boost::asio::ip;
 	using namespace boost::xpressive;
@@ -107,7 +108,7 @@ namespace STOMP {
 
             bool send_frame( Frame& _frame );
             vector<Frame*> 	parse_response	();
-            Frame* 			parse_frame		(smatch const framestr);
+            Frame* 			parse_frame		(xpressive::smatch& framestr);
             //
 
             void consume_frame(Frame& _rcvd_frame);

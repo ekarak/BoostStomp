@@ -42,21 +42,21 @@ namespace STOMP {
   using boost::asio::ip::tcp;
 
   // regular expressions to parse a STOMP server frame
-  static sregex re_stomp_client_command = as_xpr("CONNECT")  | "DISCONNECT"
+  static xpressive::sregex re_stomp_client_command = as_xpr("CONNECT")  | "DISCONNECT"
 		| "SEND" 	| "SUBSCRIBE" |  "UNSUBSCRIBE"
 		| "BEGIN" | "COMMIT" | "ABORT"
 		| "ACK" | "NACK" ;
 
-  static sregex re_stomp_server_command = as_xpr("CONNECTED")
+  static xpressive::sregex re_stomp_server_command = as_xpr("CONNECTED")
 		| "MESSAGE" | "RECEIPT" | "ERROR"
 		| "ACK" | "NACK" ;
   //
-  static mark_tag command(1), headers(2), body(3);
-  static mark_tag key(1), value(2);
+  static xpressive::mark_tag command(1), headers(2), body(3);
+  static xpressive::mark_tag key(1), value(2);
   //
   //static sregex re_header = (key= -+alnum) >> ':' >> (value= -+_) >> _n;
-  static sregex re_header = (key= -+~as_xpr(':')) >> ':' >> (value= -+_) >> _n;
-  static sregex re_stomp_server_frame  = bos >> (command= re_stomp_server_command ) >> _n // command and newline
+  static xpressive::sregex re_header = (key= -+~as_xpr(':')) >> ':' >> (value= -+_) >> _n;
+  static xpressive::sregex re_stomp_server_frame  = bos >> (command= re_stomp_server_command ) >> _n // command and newline
                       >> (headers= -+(re_header)) >> _n  // headers and terminating newline
                       >> (body= *_) >> eos; //body till end of stream (\0)
 
@@ -106,7 +106,7 @@ namespace STOMP {
   {
 	  vector<Frame*> results;
 	  istream response_stream(&stomp_response);
-	  smatch frame_match;
+	  xpressive::smatch frame_match;
 	  string str;
 	  //
 	  // get all the responses in response stream
@@ -133,7 +133,7 @@ namespace STOMP {
   };
 
   // --------------------------------------------------
-  Frame* BoostStomp::parse_frame(smatch const frame_match)
+  Frame* BoostStomp::parse_frame(xpressive::smatch& frame_match)
   // --------------------------------------------------
   {
 	  	hdrmap hm;
@@ -146,10 +146,10 @@ namespace STOMP {
 		// break down headers
 		std::string h = std::string(frame_match[headers]);
 
-		sregex_iterator cur( h.begin(), h.end(), re_header );
-		sregex_iterator end;
+		xpressive::sregex_iterator cur( h.begin(), h.end(), re_header );
+		xpressive::sregex_iterator end;
 		for( ; cur != end; ++cur ) {
-			smatch const &header = *cur;
+			xpressive::smatch const &header = *cur;
 			//std::cout << "H:" << header[key] << "==" <<  header[value] << std::endl;
 			hm[*decode_header_token(header[key].str().c_str())] = *decode_header_token(header[value].str().c_str());
 		}

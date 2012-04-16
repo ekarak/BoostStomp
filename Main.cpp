@@ -81,7 +81,7 @@ int main(int argc, char *argv[]) {
         stomp_client->send(*notifications_topic, headers, body);
         while (1) sleep(1);
     } 
-    catch (exception& e) 
+    catch (std::exception& e)
     {
         cerr << "Error in BoostStomp: " << e.what() << "\n";
         return 1;

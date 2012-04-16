@@ -60,4 +60,4 @@ bindist: main
 	tar -c --exclude=".git" --exclude ".svn" -hvzf BoostStomp_bin_`uname -i`.tar.gz main *.a *.so license/ README*
 
 clean:
-	rm -f main *.o 
+	rm -f main *.o *.a *.so
