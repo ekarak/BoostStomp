@@ -37,12 +37,23 @@ http://en.wikipedia.org/wiki/GNU_Lesser_General_Public_License
 
 #include <boost/asio.hpp>
 #include <boost/asio/deadline_timer.hpp>
+#include <boost/format.hpp>
 #include <boost/shared_ptr.hpp>
 #include <boost/thread.hpp>
 #include <boost/thread/mutex.hpp>
 #include <boost/xpressive/xpressive.hpp>
 
 #include "StompFrame.hpp"
+
+// helper template function for pretty-printing just about anything
+template <class T>
+std::string to_string(T t, std::ios_base & (*f)(std::ios_base&))
+{
+  std::ostringstream oss;
+  oss.setf (std::ios_base::showbase);
+  oss << f << t;
+  return oss.str();
+}
 
 namespace STOMP {
 
@@ -55,16 +66,6 @@ namespace STOMP {
         ACK_AUTO=0, // implicit acknowledgment (no ACK is sent)
         ACK_CLIENT  // explicit acknowledgment (must ACK)
     } AckMode;
-
-    // helper template function for pretty-printing just about anything
-    template <class T>
-    std::string to_string(T t, std::ios_base & (*f)(std::ios_base&))
-    {
-      std::ostringstream oss;
-      oss.setf (std::ios_base::showbase);
-      oss << f << t;
-      return oss.str();
-    }
     
     // Stomp message callback function prototype
     typedef void (*pfnOnStompMessage_t)( Frame* _frame );
@@ -149,6 +150,7 @@ namespace STOMP {
     void debug_print(boost::format& fmt);
     void debug_print(string& str);
     void debug_print(const char* str);
+
 }
 
 

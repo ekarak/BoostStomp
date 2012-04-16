@@ -40,12 +40,8 @@ namespace STOMP {
   using namespace boost;
   using namespace boost::asio;
   using boost::asio::ip::tcp;
-  
-  typedef std::deque<Frame> stomp_frame_queue;
-
 
   // regular expressions to parse a STOMP server frame
-
   static sregex re_stomp_client_command = as_xpr("CONNECT")  | "DISCONNECT"
 		| "SEND" 	| "SUBSCRIBE" |  "UNSUBSCRIBE"
 		| "BEGIN" | "COMMIT" | "ABORT"
@@ -58,7 +54,8 @@ namespace STOMP {
   static mark_tag command(1), headers(2), body(3);
   static mark_tag key(1), value(2);
   //
-  static sregex re_header = (key= -+alnum) >> ':' >> (value= -+_) >> _n;
+  //static sregex re_header = (key= -+alnum) >> ':' >> (value= -+_) >> _n;
+  static sregex re_header = (key= -+~as_xpr(':')) >> ':' >> (value= -+_) >> _n;
   static sregex re_stomp_server_frame  = bos >> (command= re_stomp_server_command ) >> _n // command and newline
                       >> (headers= -+(re_header)) >> _n  // headers and terminating newline
                       >> (body= *_) >> eos; //body till end of stream (\0)
@@ -113,12 +110,12 @@ namespace STOMP {
 	  string str;
 	  //
 	  // get all the responses in response stream
-	  debug_print(boost::format("parse_response before: (%1% bytes in stomp_response)") % stomp_response.size() );
+	  //debug_print(boost::format("parse_response before: (%1% bytes in stomp_response)") % stomp_response.size() );
 	  //
 	  // iterate over all frame matches
 	  //
 	  while ( std::getline( response_stream, str, '\0' ) ) {
-		  debug_print(boost::format("parse_response in loop: (%1% bytes in stomp_response)") % stomp_response.size());
+		  //debug_print(boost::format("parse_response in loop: (%1% bytes in stomp_response)") % stomp_response.size());
 
 		  if ( regex_match(str, frame_match, re_stomp_server_frame ) ) {
 			  Frame* next_frame = parse_frame(frame_match);
@@ -142,7 +139,7 @@ namespace STOMP {
 	  	hdrmap hm;
 		size_t framesize = frame_match.length(0);
 		debug_print(boost::format("-- parse_frame, frame size: %1% bytes") % framesize);
-		hexdump(frame_match.str(0).c_str(), framesize);
+		//hexdump(frame_match.str(0).c_str(), framesize);
 		stomp_response.consume(framesize);
 
 		//std::cout << "Command:" << frame_match[command] << std::endl;
@@ -154,7 +151,7 @@ namespace STOMP {
 		for( ; cur != end; ++cur ) {
 			smatch const &header = *cur;
 			//std::cout << "H:" << header[key] << "==" <<  header[value] << std::endl;
-			hm[header[key]] = header[value];
+			hm[*decode_header_token(header[key].str().c_str())] = *decode_header_token(header[value].str().c_str());
 		}
 		//
 		string c = string(frame_match[command]);
@@ -216,7 +213,7 @@ namespace STOMP {
   // The endpoint iterator will have been obtained using a tcp::resolver.
   void BoostStomp::start(tcp::resolver::iterator endpoint_iter)
   {
-	debug_print("BoostStomp starting...");
+	debug_print("starting...");
     // Start the connect actor.
     start_connect(endpoint_iter);
   }
@@ -226,7 +223,7 @@ namespace STOMP {
   // response to graceful termination or an unrecoverable error.
   void BoostStomp::stop()
   {
-	debug_print("BoostStomp stopping...");
+	debug_print("stopping...");
     m_stopped = true;
     m_socket->close();
     m_heartbeat_timer->cancel();
@@ -300,6 +297,7 @@ namespace STOMP {
        // The connection was successful. Send the CONNECT request immediately.
        Frame frame( "CONNECT" );
        frame.encode();
+       debug_print(boost::format("Sending %1% frame...") %  frame.command()  );
        boost::asio::write(*m_socket, frame.request);
 
        // Start the reading actor so as to receive the CONNECTED frame,
@@ -363,11 +361,10 @@ namespace STOMP {
   void BoostStomp::start_stomp_write()
   // -----------------------------------------------
   {
-    if (m_stopped)
+    if ((m_stopped) || (!m_connected))
       return;
 
-    if (!m_connected)
-    	return;
+    debug_print("start_stomp_write");
 
     // send all STOMP frames in queue
     m_sendqueue_mutex.lock();
@@ -474,6 +471,8 @@ namespace STOMP {
 	  m_sendqueue_mutex.lock();
 	  m_sendqueue.push(frame);
 	  m_sendqueue_mutex.unlock();
+	  // start the write actor, if we're connected and not stopped
+	  if (m_connected && !m_stopped) start_stomp_write();
 	  return(true);
   }
 
@@ -488,7 +487,7 @@ namespace STOMP {
   void debug_print(boost::format& fmt) {
 #ifdef DEBUG_STOMP
 	    global_stream_lock.lock();
-	    std::cout << "[" << boost::this_thread::get_id() << "] " << fmt.str() << endl;
+	    std::cout << "[" << boost::this_thread::get_id() << "] BoostStomp:" << fmt.str() << endl;
 	    global_stream_lock.unlock();
 #endif
   }
@@ -502,4 +501,7 @@ namespace STOMP {
 	  boost::format fmt = boost::format(cstr);
   	  debug_print(fmt);
   }
+
+
+
 } // end namespace STOMP

@@ -71,11 +71,13 @@ int main(int argc, char *argv[]) {
         // construct a headermap
         STOMP::hdrmap headers;
         headers["header1"] = string("value1").c_str();
-        headers["header2"] = string("value2").c_str();
+        headers["header2:withcolon"] = string("value2").c_str();
         headers["header3"] = string("value3").c_str();
         string body = string("this is the main message body");
 
         // add an outgoing message to the queue
+        stomp_client->send(*notifications_topic, headers, body);
+        sleep(1);
         stomp_client->send(*notifications_topic, headers, body);
         while (1) sleep(1);
     } 

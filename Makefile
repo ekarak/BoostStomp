@@ -8,7 +8,7 @@
 
 CC     := gcc
 CXX    := g++
-LD     := g++
+LD     := ld
 AR     := ar rc
 RANLIB := ranlib
 
@@ -30,18 +30,27 @@ INCLUDES := -I .
 %.o : %.c
 	$(CC) $(CFLAGS) $(INCLUDES) -o $@ $<
 
-all: main
+all: main libbooststomp.a libbooststomp.so
         
-BoostStomp.o:  BoostStomp.cpp BoostStomp.hpp StompFrame.hpp
-	g++ $(CFLAGS) -c BoostStomp.cpp $(INCLUDES)    
+BoostStomp.o:  BoostStomp.cpp BoostStomp.hpp
+	$(CXX) $(CFLAGS) -c BoostStomp.cpp $(INCLUDES)
+	
+StompFrame.o:  StompFrame.cpp StompFrame.hpp
+	$(CXX) $(CFLAGS) -c StompFrame.cpp $(INCLUDES)
 
 Main.o: Main.cpp 
-	g++ $(CFLAGS) -c Main.cpp $(INCLUDES)  
+	$(CXX) $(CFLAGS) -c Main.cpp $(INCLUDES)  
 	
-main:   Main.o  BoostStomp.o 
-	$(LD) -o $@ $(LDFLAGS) Main.o BoostStomp.o
+main:   Main.o  BoostStomp.o StompFrame.o
+	$(CXX) -o $@ $(LDFLAGS) Main.o BoostStomp.o StompFrame.o
 #	upx main
 	
+libbooststomp.a:	BoostStomp.o StompFrame.o
+	$(AR) $@ BoostStomp.o StompFrame.o
+	
+libbooststomp.so:
+	$(CXX) -shared -Wl,-soname,$@ -o $@  BoostStomp.o StompFrame.o
+
 dist:	main
 	rm -f BoostStomp.tar.gz
 	tar -c --exclude=".git" --exclude ".svn" --exclude "*.o" -hvzf BoostStomp.tar.gz *.cpp *.h *.hpp Makefile license/ README*
