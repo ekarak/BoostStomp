@@ -38,7 +38,7 @@ using namespace STOMP;
 using namespace std;
 
 static BoostStomp*  stomp_client;
-static string*      notifications_topic = new string("/queue/zwave/monitor");
+static string       notifications_topic = "/queue/zwave/monitor";
 
 // -------------------------------------------------------
 // a callback for any STOMP Frames in subscribed channels
@@ -62,24 +62,31 @@ int main(int argc, char *argv[]) {
     int     stomp_port = 61613;
 
     try {
-    	// connect to STOMP server
+    	// initiate a new BoostStomp client
         stomp_client = new BoostStomp(stomp_host, stomp_port);
 
+        // start the client, (by connecting to the STOMP server)
+        stomp_client->start();
+
         // subscribe to a channel
-        stomp_client->subscribe(*notifications_topic, (STOMP::pfnOnStompMessage_t) &subscription_callback);
+        stomp_client->subscribe(notifications_topic, (STOMP::pfnOnStompMessage_t) &subscription_callback);
 
         // construct a headermap
         STOMP::hdrmap headers;
         headers["header1"] = string("value1");
         headers["header2:withcolon"] = string("value2");
         headers["header3"] = string("value3");
-        string body = string("this is the main message body");
+        string body = string("this is the FIRST message body");
 
         // add an outgoing message to the queue
-        stomp_client->send(*notifications_topic, headers, body);
+        stomp_client->send(notifications_topic, headers, body);
         sleep(1);
-        stomp_client->send(*notifications_topic, headers, body);
-        while (1) sleep(1);
+        string body2 = string("this is the SECOND message");
+        stomp_client->send(notifications_topic, headers, body2);
+        sleep(1);
+        string body3 = string("this is the THIRD message");
+        stomp_client->send(notifications_topic, headers, body3);
+        sleep(1);
     } 
     catch (std::exception& e)
     {

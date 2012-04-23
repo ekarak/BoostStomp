@@ -24,8 +24,13 @@ http://en.wikipedia.org/wiki/GNU_Lesser_General_Public_License
 
 #include "StompFrame.hpp"
 
+#include <boost/format.hpp>
+
 namespace STOMP {
-	
+
+	using namespace boost;
+	using namespace boost::xpressive;
+
   /*
    * Escaping is needed to allow header keys and values to contain those frame header
    * delimiting octets as values. The CONNECT and CONNECTED frames do not escape the
@@ -88,5 +93,63 @@ namespace STOMP {
 	request.sputc('\0');
   };
 
+  // --------------------------------------------------
+  Frame::Frame(xpressive::smatch& frame_match, boost::asio::streambuf& stomp_response)
+  // --------------------------------------------------
+  {
+		size_t framesize = frame_match.length(0);
+		debug_print(boost::format("-- parse_frame, frame size: %1% bytes") % framesize);
+		//hexdump(frame_match.str(0).c_str(), framesize);
+		stomp_response.consume(framesize);
+
+		//std::cout << "Command:" << frame_match[command] << std::endl;
+		// break down headers
+		std::string h = std::string(frame_match[tag_headers]);
+
+		xpressive::sregex_iterator cur( h.begin(), h.end(), re_header );
+		xpressive::sregex_iterator end;
+		for( ; cur != end; ++cur ) {
+			xpressive::smatch const &header = *cur;
+			//std::cout << "H:" << header[key] << "==" <<  header[value] << std::endl;
+			m_headers[*decode_header_token(header[tag_key].str().c_str())] = *decode_header_token(header[tag_value].str().c_str());
+		}
+		//
+		m_command = string(frame_match[tag_command]);
+		m_body = (frame_match[tag_body]) ? string(frame_match[tag_body]) : "";
+  };
+
+  // ----------------------------
+  vector<Frame*> parse_all_frames(boost::asio::streambuf& stomp_response)
+  // ----------------------------
+  {
+	  vector<Frame*> results;
+	  istream response_stream(&stomp_response);
+	  xpressive::smatch frame_match;
+	  string str;
+	  //
+	  // get all the responses in response stream
+	  //debug_print(boost::format("parse_response before: (%1% bytes in stomp_response)") % stomp_response.size() );
+	  //
+	  // iterate over all frame matches
+	  //
+	  while ( std::getline( response_stream, str, '\0' ) ) {
+		  //debug_print(boost::format("parse_response in loop: (%1% bytes in stomp_response)") % stomp_response.size());
+
+		  if ( regex_match(str, frame_match, re_stomp_server_frame ) ) {
+			  try {
+				  Frame* next_frame = new Frame(frame_match, stomp_response);
+				  results.push_back(next_frame);
+			  } catch(...) {
+// TODO
+			  }
+		  } else {
+			  debug_print(boost::format("parse_response error: mismatched frame: \n%1%") % str);
+			  hexdump(str.c_str(), str.length());
+		  }
+
+	  }
+	  //cout << "exiting, " << stomp_response.size() << " bytes still in stomp_response" << endl;
+      return(results);
+  };
 
 }

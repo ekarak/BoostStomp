@@ -37,13 +37,14 @@ http://en.wikipedia.org/wiki/GNU_Lesser_General_Public_License
 
 #include <boost/asio.hpp>
 #include <boost/asio/deadline_timer.hpp>
-#include <boost/format.hpp>
+
 #include <boost/shared_ptr.hpp>
 #include <boost/thread.hpp>
 #include <boost/thread/mutex.hpp>
 #include <boost/xpressive/xpressive.hpp>
 
 #include "StompFrame.hpp"
+#include "helpers.h"
 
 // helper template function for pretty-printing just about anything
 template <class T>
@@ -65,7 +66,8 @@ namespace STOMP {
     // ACK mode
     typedef enum {
         ACK_AUTO=0, // implicit acknowledgment (no ACK is sent)
-        ACK_CLIENT  // explicit acknowledgment (must ACK)
+        ACK_CLIENT,  // explicit acknowledgment (must ACK)
+        ACK_CLIENT_INDIVIDUAL //
     } AckMode;
     
     // Stomp message callback function prototype
@@ -105,21 +107,21 @@ namespace STOMP {
             boost::thread*		worker_thread;
             boost::shared_ptr<deadline_timer>	m_heartbeat_timer;
             boost::asio::streambuf m_heartbeat;
-
-            bool send_frame( Frame& _frame );
-            vector<Frame*> 	parse_response	();
-            Frame* 			parse_frame		(xpressive::smatch& framestr);
+            string	m_protocol_version;
+            int 	m_transaction_id;
+            //
+            bool 			send_frame( Frame& _frame );
             //
 
             void consume_frame(Frame& _rcvd_frame);
-
-            void start(tcp::resolver::iterator endpoint_iter);
-            void stop();
 
             void start_connect(tcp::resolver::iterator endpoint_iter);
             void handle_connect(const boost::system::error_code& ec, tcp::resolver::iterator endpoint_iter);
 
             void start_stomp_connect(tcp::resolver::iterator endpoint_iter);
+
+            //TODO: void setup_stomp_heartbeat(int cx, int cy);
+
             void start_stomp_heartbeat();
             void handle_stomp_heartbeat(const boost::system::error_code& ec);
 
@@ -133,24 +135,29 @@ namespace STOMP {
         //----------------
         public:
         //----------------
-            //BoostStomp(boost::asio::io_service& io_service, const std::string& hostname, const int port);
+            // constructor
             BoostStomp(string& hostname, int& port, AckMode ackmode = ACK_AUTO);
+            // destructor
             ~BoostStomp();
-            // thread-safe methods called from outside the thread loop
 
-            bool subscribe ( std::string& topic, pfnOnStompMessage_t callback );
+            void start();
+            void stop();
+
+            // thread-safe methods called from outside the thread loop
             bool send      ( std::string& topic, hdrmap _headers, std::string& body );
+            bool send      ( std::string& topic, hdrmap _headers, std::string& body, pfnOnStompMessage_t callback );
+            bool subscribe 	( std::string& topic, pfnOnStompMessage_t callback );
+            bool unsubscribe ( std::string& topic );
+            bool acknowledge ( Frame& _frame );
+            // STOMP transactions
+            int  begin(); // returns a new transaction id
+            bool commit(string& transaction_id);
+            bool abort(string& transaction_id);
             //
-            //BoostStompState& get_state() { return m_fsm.getState(); };
             AckMode get_ackmode() { return m_ackmode; };
             //
     }; //class
     
-    // helper function
-    void hexdump(const void *ptr, int buflen);
-    void debug_print(boost::format& fmt);
-    void debug_print(string& str);
-    void debug_print(const char* str);
 
 }
 

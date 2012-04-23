@@ -32,6 +32,9 @@ INCLUDES := -I .
 
 all: main libbooststomp.a libbooststomp.so
         
+helpers.o:   helpers.cpp  helpers.h
+	$(CXX) $(CFLAGS) -c helpers.cpp $(INCLUDES)
+	
 BoostStomp.o:  BoostStomp.cpp BoostStomp.hpp
 	$(CXX) $(CFLAGS) -c BoostStomp.cpp $(INCLUDES)
 	
@@ -41,8 +44,8 @@ StompFrame.o:  StompFrame.cpp StompFrame.hpp
 Main.o: Main.cpp 
 	$(CXX) $(CFLAGS) -c Main.cpp $(INCLUDES)  
 	
-main:   Main.o  BoostStomp.o StompFrame.o
-	$(CXX) -o $@ $(LDFLAGS) Main.o BoostStomp.o StompFrame.o
+main:   Main.o  BoostStomp.o StompFrame.o helpers.o
+	$(CXX) -o $@ $(LDFLAGS) Main.o BoostStomp.o StompFrame.o helpers.o
 #	upx main
 	
 libbooststomp.a:	BoostStomp.o StompFrame.o

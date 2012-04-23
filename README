@@ -17,16 +17,20 @@ along with the shared & static versions of the booststomp library.
 Usage is simple: construct a BoostStomp object passing it the hostname 
 and port of the STOMP server:
 
-	string  stomp_host = "localhost";
-	int     stomp_port = 61613;
-        stomp_client = new BoostStomp(stomp_host, stomp_port);
+    string  stomp_host = "localhost";
+    int     stomp_port = 61613;
+    stomp_client = new BoostStomp(stomp_host, stomp_port);
 
-subscribe to a channel, and pass in a callback for the handling of any messages of interest:
+..then, start it to initiate the TCP & STOMP connection:
 
-	string  notifications_topic = "/queue/zwave/monitor";
-        stomp_client->subscribe(*notifications_topic, (STOMP::pfnOnStompMessage_t) &subscription_callback);
+    stomp_client->start();
+    
+..then, subscribe to a channel, and pass in a callback for the handling of any messages of interest:
 
-send a STOMP frame, adding in any headers you like:
+    string  notifications_topic = "/queue/zwave/monitor";
+    stomp_client->subscribe(*notifications_topic, (STOMP::pfnOnStompMessage_t) &subscription_callback);
+
+..then you can construct STOMP frames, adding in any headers you like, and add them to the send queue:
  
         STOMP::hdrmap headers;
         headers["header1"] = string("value1");
