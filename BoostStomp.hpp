@@ -69,9 +69,12 @@ namespace STOMP {
         ACK_CLIENT,  // explicit acknowledgment (must ACK)
         ACK_CLIENT_INDIVIDUAL //
     } AckMode;
-    
+
     // Stomp message callback function prototype
     typedef void (*pfnOnStompMessage_t)( Frame* _frame );
+
+    // Stomp subscription map (topic => callback)
+    typedef std::map<std::string, pfnOnStompMessage_t> subscription_map;
 
     // here we go
 	// -------------
@@ -84,7 +87,7 @@ namespace STOMP {
 
             std::queue<Frame>   m_sendqueue;
             boost::mutex        m_sendqueue_mutex;
-            std::map<std::string, pfnOnStompMessage_t>   m_subscriptions;
+            subscription_map    m_subscriptions;
 
 		 	tcp::socket* 		m_socket;
         //
@@ -93,7 +96,7 @@ namespace STOMP {
             AckMode             m_ackmode;
             //
             bool		m_stopped;
-            bool		m_connected;
+            bool		m_connected; // have we completed application-level STOMP connection?
 
             boost::shared_ptr< io_service > 	m_io_service;
 			//boost::shared_ptr< io_service::work > m_io_service_work;
@@ -110,7 +113,8 @@ namespace STOMP {
             string	m_protocol_version;
             int 	m_transaction_id;
             //
-            bool 			send_frame( Frame& _frame );
+            bool send_frame( Frame& _frame );
+            bool do_subscribe (string& topic);
             //
 
             void consume_frame(Frame& _rcvd_frame);

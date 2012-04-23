@@ -98,10 +98,11 @@ namespace STOMP {
   // --------------------------------------------------
   {
 		size_t framesize = frame_match.length(0);
-		debug_print(boost::format("-- parse_frame, frame size: %1% bytes") % framesize);
-		//hexdump(frame_match.str(0).c_str(), framesize);
-		stomp_response.consume(framesize);
-
+		size_t bytes_to_consume = framesize + 2; // plus one for the NULL
+		debug_print(boost::format("-- parse_frame, frame: %1% bytes, content: \n%2%") % framesize % frame_match[0]);
+		hexdump(frame_match.str(0).c_str(), framesize);
+		stomp_response.consume(bytes_to_consume);
+		debug_print(boost::format("-- parse_frame, consumed %1% bytes from stomp_response") % bytes_to_consume);
 		//std::cout << "Command:" << frame_match[command] << std::endl;
 		// break down headers
 		std::string h = std::string(frame_match[tag_headers]);
@@ -110,7 +111,6 @@ namespace STOMP {
 		xpressive::sregex_iterator end;
 		for( ; cur != end; ++cur ) {
 			xpressive::smatch const &header = *cur;
-			//std::cout << "H:" << header[key] << "==" <<  header[value] << std::endl;
 			m_headers[*decode_header_token(header[tag_key].str().c_str())] = *decode_header_token(header[tag_value].str().c_str());
 		}
 		//
@@ -126,24 +126,29 @@ namespace STOMP {
 	  istream response_stream(&stomp_response);
 	  xpressive::smatch frame_match;
 	  string str;
+	  char lala[1024];
 	  //
 	  // get all the responses in response stream
-	  //debug_print(boost::format("parse_response before: (%1% bytes in stomp_response)") % stomp_response.size() );
+	  debug_print(boost::format("parse_all_frames before: (%1% bytes in stomp_response)") % stomp_response.size() );
 	  //
 	  // iterate over all frame matches
 	  //
-	  while ( std::getline( response_stream, str, '\0' ) ) {
-		  //debug_print(boost::format("parse_response in loop: (%1% bytes in stomp_response)") % stomp_response.size());
+	  //while ( std::getline( response_stream, str, '\0' ) ) {
+	  while ( response_stream.get(lala, 1023, '\0') ) {
+		  str = string(lala);
+hexdump(str.c_str(), str.size());
+		  debug_print(boost::format("parse_all_frames in loop: (%1% bytes in str, %2% bytes still in stomp_response)") % str.size() % stomp_response.size());
 
 		  if ( regex_match(str, frame_match, re_stomp_server_frame ) ) {
 			  try {
 				  Frame* next_frame = new Frame(frame_match, stomp_response);
 				  results.push_back(next_frame);
 			  } catch(...) {
+				  debug_print("parse_response in loop: exception in Frame constructor");
 // TODO
 			  }
 		  } else {
-			  debug_print(boost::format("parse_response error: mismatched frame: \n%1%") % str);
+			  debug_print("parse_response error: mismatched frame:");
 			  hexdump(str.c_str(), str.length());
 		  }
 

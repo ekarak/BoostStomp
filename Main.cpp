@@ -76,17 +76,17 @@ int main(int argc, char *argv[]) {
         headers["header1"] = string("value1");
         headers["header2:withcolon"] = string("value2");
         headers["header3"] = string("value3");
-        string body = string("this is the FIRST message body");
+        string body = string("this is the FIRST message body.");
 
         // add an outgoing message to the queue
         stomp_client->send(notifications_topic, headers, body);
         sleep(1);
-        string body2 = string("this is the SECOND message");
+        string body2 = string("this is the SECOND message.");
         stomp_client->send(notifications_topic, headers, body2);
         sleep(1);
-        string body3 = string("this is the THIRD message");
+        string body3 = string("this is the THIRD message.");
         stomp_client->send(notifications_topic, headers, body3);
-        sleep(1);
+        while (1) sleep(1);
     } 
     catch (std::exception& e)
     {

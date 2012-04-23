@@ -52,7 +52,7 @@ namespace STOMP {
     m_hostname(hostname),
     m_port(port),
     m_ackmode(ackmode),
-    m_stopped(false),
+    m_stopped(true),
     m_connected(false),
     m_protocol_version("1.0"),
     m_transaction_id(0)
@@ -81,7 +81,10 @@ namespace STOMP {
   void BoostStomp::worker( boost::shared_ptr< boost::asio::io_service > io_service )
   {
 	  debug_print("Worker thread starting...");
-	  io_service->run();
+	  while(!m_stopped) {
+		  io_service->run();
+		  sleep(1);
+	  }
 	  debug_print("Worker thread finished.");
   }
 
@@ -95,6 +98,8 @@ namespace STOMP {
   // The endpoint iterator will have been obtained using a tcp::resolver.
   void BoostStomp::start()
   {
+	debug_print("BoostStomp starting...");
+	m_stopped = false;
 	m_socket 		= new tcp::socket(*m_io_service);
 	tcp::resolver 	resolver(*m_io_service);
 	tcp::resolver::iterator endpoint_iter = resolver.resolve(tcp::resolver::query(
@@ -111,12 +116,20 @@ namespace STOMP {
   // response to graceful termination or an unrecoverable error.
   void BoostStomp::stop()
   {
-	debug_print("stopping...");
+	debug_print("BoostStomp stopping...");
+	if (m_connected && m_socket->is_open()) {
+	  Frame frame( "DISCONNECT");
+	  frame.encode();
+	  debug_print("Sending DISCONNECT frame...");
+	  boost::asio::write(*m_socket, frame.request);
+	}
+	m_connected = false;
     m_stopped = true;
     m_heartbeat_timer->cancel();
     //
     m_socket->close();
     delete m_socket;
+    //
   }
 
 
@@ -153,9 +166,11 @@ namespace STOMP {
     	  // start the read actor so as to receive the CONNECTED frame
           start_stomp_read();
 
-          // start worker thread (io_service.run())
+          // start worker thread (m_io_service.run())
           worker_thread = new boost::thread( boost::bind( &BoostStomp::worker, this, m_io_service ) );
+
       } else {
+
           // We need to close the socket used in the previous connection attempt
           // before starting a new one.
           m_socket->close();
@@ -209,13 +224,14 @@ namespace STOMP {
 		  delete frame;
 		  received_frames.pop_back();
 		} //while
-		// OK, go on to the next outgoing frame in send queue
-		start_stomp_write();
+		// wait for any incoming frames from the server...
+		start_stomp_read();
     }
     else
     {
       std::cerr << "BoostStomp: Error on receive: " << ec.message() << "\n";
       stop();
+      start();
     }
   }
 
@@ -258,10 +274,10 @@ namespace STOMP {
 	      return;
 
 	  if (!ec) {
-		  // read back the server's response
-		  start_stomp_read();
+		  // process next frame in queue, if any
+		  start_stomp_write();
 	  } else {
-		  // TODO: if disconnected, go back to the connection phase
+		  m_connected = false;
 		  std::cout << "Error writing to STOMP server: " << ec.message() << "\n";
 		  stop();
 	  }
@@ -316,7 +332,10 @@ namespace STOMP {
 	  return(send_frame(_ackframe));
   }
 
-  void BoostStomp::consume_frame(Frame& _rcvd_frame) {
+  // ------------------------------------------
+  void BoostStomp::consume_frame(Frame& _rcvd_frame)
+  // ------------------------------------------
+  {
 	  debug_print(boost::format("-- consume_frame: received %1%") % _rcvd_frame.command());
 	  if (_rcvd_frame.command() == "CONNECTED") {
 		  m_connected = true;
@@ -329,6 +348,11 @@ namespace STOMP {
 			  // we are connected to a version 1.1 STOMP server, we can start the heartbeat actor
 			  start_stomp_heartbeat();
 		  }
+          // in case of reconnection, we need to re-subscribe to all subscriptions
+          for (subscription_map::iterator it = m_subscriptions.begin(); it != m_subscriptions.end(); it++) {
+        	  string topic = (*it).first;
+        	  do_subscribe(topic);
+          };
 	  }
 	  if (_rcvd_frame.command() == "MESSAGE") {
 		  string* dest = new string(_rcvd_frame.headers()["destination"]);
@@ -398,13 +422,21 @@ namespace STOMP {
   bool BoostStomp::subscribe( string& topic, pfnOnStompMessage_t callback )
   // ------------------------------------------
   {
+	  m_subscriptions[topic] = callback;
+	  return(do_subscribe(topic));
+  }
+
+  // ------------------------------------------
+  bool BoostStomp::do_subscribe (string& topic)
+  // ------------------------------------------
+  {
 	  hdrmap hm;
 	  hm["id"] = lexical_cast<string>(boost::this_thread::get_id());
 	  hm["destination"] = topic;
 	  Frame frame( "SUBSCRIBE", hm );
-	  m_subscriptions[topic] = callback;
 	  return(send_frame(frame));
   }
+
 
   // ------------------------------------------
   bool BoostStomp::unsubscribe( string& topic )
