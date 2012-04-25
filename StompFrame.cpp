@@ -22,14 +22,16 @@ for more information on the LGPL, see:
 http://en.wikipedia.org/wiki/GNU_Lesser_General_Public_License
 */
 
-#include "StompFrame.hpp"
-
 #include <boost/format.hpp>
+#include <boost/lexical_cast.hpp>
+#include "BoostStomp.hpp"
+//#include "StompFrame.hpp"
+#include "helpers.h"
 
 namespace STOMP {
 
 	using namespace boost;
-	using namespace boost::xpressive;
+	using namespace boost::assign;
 
   /*
    * Escaping is needed to allow header keys and values to contain those frame header
@@ -80,81 +82,19 @@ namespace STOMP {
 	  }
 	}
 	// special header: content-length
-	if( m_body.length() > 0 ) {
-	  os << "content-length:" << m_body.length() << "\n";
+	if( m_body.size() > 0 ) {
+	  os << "content-length:" << m_body.size() << "\n";
 	}
 	// write newline signifying end of headers
 	os << "\n";
 	// step 3. Write the body
-	if( m_body.length() > 0 ) {
-	  os << m_body;
+	if( m_body.size() > 0 ) {
+		request.sputn(m_body.data(), m_body.size());
+	  //os << m_body.data();
+		// TODO: check bodies with NULL in them (data() returns char*)
 	}
 	// write terminating NULL char
 	request.sputc('\0');
-  };
-
-  // --------------------------------------------------
-  Frame::Frame(xpressive::smatch& frame_match, boost::asio::streambuf& stomp_response)
-  // --------------------------------------------------
-  {
-		size_t framesize = frame_match.length(0);
-		size_t bytes_to_consume = framesize + 2; // plus one for the NULL
-		debug_print(boost::format("-- parse_frame, frame: %1% bytes, content: \n%2%") % framesize % frame_match[0]);
-		hexdump(frame_match.str(0).c_str(), framesize);
-		stomp_response.consume(bytes_to_consume);
-		debug_print(boost::format("-- parse_frame, consumed %1% bytes from stomp_response") % bytes_to_consume);
-		//std::cout << "Command:" << frame_match[command] << std::endl;
-		// break down headers
-		std::string h = std::string(frame_match[tag_headers]);
-
-		xpressive::sregex_iterator cur( h.begin(), h.end(), re_header );
-		xpressive::sregex_iterator end;
-		for( ; cur != end; ++cur ) {
-			xpressive::smatch const &header = *cur;
-			m_headers[*decode_header_token(header[tag_key].str().c_str())] = *decode_header_token(header[tag_value].str().c_str());
-		}
-		//
-		m_command = string(frame_match[tag_command]);
-		m_body = (frame_match[tag_body]) ? string(frame_match[tag_body]) : "";
-  };
-
-  // ----------------------------
-  vector<Frame*> parse_all_frames(boost::asio::streambuf& stomp_response)
-  // ----------------------------
-  {
-	  vector<Frame*> results;
-	  istream response_stream(&stomp_response);
-	  xpressive::smatch frame_match;
-	  string str;
-	  char lala[1024];
-	  //
-	  // get all the responses in response stream
-	  debug_print(boost::format("parse_all_frames before: (%1% bytes in stomp_response)") % stomp_response.size() );
-	  //
-	  // iterate over all frame matches
-	  //
-	  //while ( std::getline( response_stream, str, '\0' ) ) {
-	  while ( response_stream.get(lala, 1023, '\0') ) {
-		  str = string(lala);
-hexdump(str.c_str(), str.size());
-		  debug_print(boost::format("parse_all_frames in loop: (%1% bytes in str, %2% bytes still in stomp_response)") % str.size() % stomp_response.size());
-
-		  if ( regex_match(str, frame_match, re_stomp_server_frame ) ) {
-			  try {
-				  Frame* next_frame = new Frame(frame_match, stomp_response);
-				  results.push_back(next_frame);
-			  } catch(...) {
-				  debug_print("parse_response in loop: exception in Frame constructor");
-// TODO
-			  }
-		  } else {
-			  debug_print("parse_response error: mismatched frame:");
-			  hexdump(str.c_str(), str.length());
-		  }
-
-	  }
-	  //cout << "exiting, " << stomp_response.size() << " bytes still in stomp_response" << endl;
-      return(results);
   };
 
 }

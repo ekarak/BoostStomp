@@ -25,8 +25,6 @@ http://en.wikipedia.org/wiki/GNU_Lesser_General_Public_License
 // based on the ASIO async TCP client example found on Boost documentation:
 // http://www.boost.org/doc/libs/1_46_1/doc/html/boost_asio/example/timeouts/async_tcp_client.cpp
 
-// #include <cstdlib>
-// #include <deque>
 #include <iostream>
 #include <boost/bind.hpp>
 #include <boost/asio.hpp>
@@ -44,6 +42,7 @@ namespace STOMP {
   using namespace boost::asio;
   using boost::asio::ip::tcp;
 
+
   // ----------------------------
   // constructor
   // ----------------------------
@@ -59,9 +58,15 @@ namespace STOMP {
   // ----------------------------
   {
 	m_io_service = boost::shared_ptr< io_service > ( new io_service  );
+	// Heartbeat setup
 	m_heartbeat_timer = boost::shared_ptr< deadline_timer> ( new deadline_timer( *m_io_service ));
 	std::ostream os( &m_heartbeat);
 	os << "\n";
+	// Server command map
+	stomp_server_command_map["CONNECTED"] = &BoostStomp::process_CONNECTED;
+	stomp_server_command_map["MESSAGE"]	=	&BoostStomp::process_MESSAGE;
+	stomp_server_command_map["RECEIPT"] = 	&BoostStomp::process_RECEIPT;
+	stomp_server_command_map["ERROR"] = 	&BoostStomp::process_ERROR;
   }
 
 
@@ -137,7 +142,6 @@ namespace STOMP {
   // --------------------------------------------------
   // ---------- TCP CONNECTION SETUP ------------------
   // --------------------------------------------------
-
 
   // --------------------------------------------------
   void BoostStomp::start_connect(tcp::resolver::iterator endpoint_iter)
@@ -217,7 +221,7 @@ namespace STOMP {
     if (!ec)
     {
     	debug_print(boost::format("received server response (%1% bytes)") %  stomp_response.size()  );
-		vector<Frame*> received_frames = parse_all_frames(stomp_response); // in StompFrame.cpp
+		vector<Frame*> received_frames = parse_all_frames();
 		while ((!received_frames.empty()) && (frame = received_frames.back())) {
 		  consume_frame(*frame);
 		  // dispose frame, its not needed anymore
@@ -235,6 +239,114 @@ namespace STOMP {
     }
   }
 
+  // --------------------------------------------------
+  Frame* BoostStomp::parse_next()
+  // --------------------------------------------------
+  {
+		string _str;
+		istream _input(&stomp_response);
+		size_t bytes_to_consume = 0, content_length = 0;
+		Frame* frame = NULL;
+		vector< string > header_parts;
+
+		try {
+
+			// STEP 1: find the next STOMP command line in stomp_response, skipping non-matching lines
+			//debug_print("parse_next phase 1");
+			while (std::getline(_input, _str)) {
+				//hexdump(_str.c_str(), _str.length());
+				if ((_str.size() > 0) && (stomp_server_command_map.find(_str) != stomp_server_command_map.end())) {
+					//debug_print(boost::format("parse_next phase 1: COMMAND==%1%") % _str);
+					frame = new Frame(_str);
+					bytes_to_consume += _str.size()+1;
+					break;
+				}
+			}
+			// STEP 2: parse all headers
+			if (frame != NULL) {
+				//debug_print("parse_next phase 2");
+				while (std::getline(_input, _str)) {
+					//hexdump(_str.c_str(), _str.length());
+					boost::algorithm::split(header_parts, _str, is_any_of(":"));
+					if (header_parts.size() > 1) {
+						string* key = decode_header_token(header_parts[0].c_str());
+						string* val = decode_header_token(header_parts[1].c_str());
+						//debug_print(boost::format("parse_next phase 2: HEADER[%1%]==%2%") % *key % *val);
+						frame->m_headers[*key] = *val;
+						bytes_to_consume += _str.size()+1;
+						// special case: content-length
+						if (*key == "content-length") {
+							content_length = lexical_cast<int>(*val);
+						}
+						delete key;
+						delete val;
+					} else {
+						break;
+					}
+				}
+				bytes_to_consume += 1;
+				// STEP 3: parse the body
+				//debug_print("parse_next phase 3");
+				if (content_length > 0) {
+					char* buffer = new char[content_length];
+					// read until the specified content length
+					_input.read(buffer, content_length);
+					bytes_to_consume += content_length;
+					/*
+					for (int i=0; i<content_length; i++) {
+						frame->m_body << buffer[i];
+					} */
+					_str = string(buffer); // TODO: check if NULLs inside the body
+					//debug_print(boost::format("parse_next phase 3: BODY(%1% bytes)==%2%") % _str.size() % _str);
+					frame->m_body.assign(_str.begin(), _str.end());
+					delete buffer;
+				} else {
+					// read all bytes until the first NULL
+					std::getline(_input, _str, '\0');
+					//debug_print(boost::format("parse_next phase 3: BODY(%1% bytes)==%2%") % _str.size() % _str);
+					if (_str.length() > 0) {
+						bytes_to_consume += _str.size() + 1;
+						frame->m_body.assign(_str.begin(), _str.end());
+					};
+				}
+			} else {
+				throw("shit happens");
+			}
+		}
+		catch (...) {
+
+		}
+		stomp_response.consume(bytes_to_consume);
+		//debug_print(boost::format("-- parse_frame, consumed %1% bytes from stomp_response") % bytes_to_consume);
+		return(frame);
+  };
+
+  // ----------------------------
+  vector<Frame*> BoostStomp::parse_all_frames()
+  // ----------------------------
+  {
+	  vector<Frame*> results;
+	  istream response_stream(&stomp_response);
+	  string str;
+	  //
+	  // get all the responses in response stream
+	  //debug_print(boost::format("parse_all_frames before: (%1% bytes in stomp_response)") % stomp_response.size() );
+	  try {
+		  //
+		  // iterate over all frame matches
+		  //
+		  while (Frame* next_frame = parse_next()) {
+			  debug_print(boost::format("parse_all_frames in loop: (%1% bytes in str, %2% bytes still in stomp_response)") % str.size() % stomp_response.size());
+			  results.push_back(next_frame);
+		  }
+	  } catch(...) {
+		  debug_print("parse_response in loop: exception in Frame constructor");
+// TODO
+	  }
+	  //cout << "exiting, " << stomp_response.size() << " bytes still in stomp_response" << endl;
+      return(results);
+  };
+
 
   // ------------------------------------------------
   // ---------- OUTPUT ACTOR SETUP ------------------
@@ -247,7 +359,7 @@ namespace STOMP {
     if ((m_stopped) || (!m_connected))
       return;
 
-    debug_print("start_stomp_write");
+    //debug_print("start_stomp_write");
 
     // send all STOMP frames in queue
     m_sendqueue_mutex.lock();
@@ -322,13 +434,14 @@ namespace STOMP {
   }
 
   // ------------------------------------------
-  bool BoostStomp::acknowledge(Frame& frame)
+  bool BoostStomp::acknowledge(Frame& frame, bool acked = true)
   // ------------------------------------------
   {
 	  hdrmap hm;
 	  hm["message-id"] = frame.headers()["message-id"];
 	  hm["subscription"] = frame.headers()["subscription"];
-	  Frame _ackframe( "ACK", hm );
+	  string _ack_cmd = (acked ? "ACK" : "NACK");
+	  Frame _ackframe( _ack_cmd, hm );
 	  return(send_frame(_ackframe));
   }
 
@@ -336,57 +449,83 @@ namespace STOMP {
   void BoostStomp::consume_frame(Frame& _rcvd_frame)
   // ------------------------------------------
   {
-	  debug_print(boost::format("-- consume_frame: received %1%") % _rcvd_frame.command());
-	  if (_rcvd_frame.command() == "CONNECTED") {
-		  m_connected = true;
-		  // try to get supported protocol version from headers
-		  if (_rcvd_frame.headers().find("version") != _rcvd_frame.headers().end()) {
-			  m_protocol_version =  _rcvd_frame.headers()["version"];
-			  debug_print(boost::format("server supports STOMP version %1%") % m_protocol_version);
-		  }
-		  if (m_protocol_version == "1.1") {
-			  // we are connected to a version 1.1 STOMP server, we can start the heartbeat actor
-			  start_stomp_heartbeat();
-		  }
-          // in case of reconnection, we need to re-subscribe to all subscriptions
-          for (subscription_map::iterator it = m_subscriptions.begin(); it != m_subscriptions.end(); it++) {
-        	  string topic = (*it).first;
-        	  do_subscribe(topic);
-          };
-	  }
-	  if (_rcvd_frame.command() == "MESSAGE") {
-		  string* dest = new string(_rcvd_frame.headers()["destination"]);
-		  //
-		  if (pfnOnStompMessage_t callback_function = m_subscriptions[*dest]) {
-			  debug_print("-- consume_frame: firing callback");
-			  //
-			  callback_function(&_rcvd_frame);
-		  };
-	  };
-	  if (_rcvd_frame.command() == "RECEIPT") {
-		  string* receipt_id = new string(_rcvd_frame.headers()["receipt_id"]);
-		  // do something with receipt...
-		  debug_print(boost::format("receipt-id == %1%") % receipt_id);
-	  }
-	  if (_rcvd_frame.command() == "ERROR") {
-		  string errormessage = (_rcvd_frame.headers().find("message") != _rcvd_frame.headers().end()) ?
-				  _rcvd_frame.headers()["message"] :
-				  "(unknown error!)";
+	  //debug_print(boost::format("-- consume_frame: received %1%") % _rcvd_frame.command());
+	  pfnStompCommandHandler_t handler = stomp_server_command_map[_rcvd_frame.command()];
+	  (this->*handler)(_rcvd_frame);
 
-		  throw(errormessage);
-	  }
+
+	  /*
+	  if (_rcvd_frame.command() == "CONNECTED") process_CONNECTED(_rcvd_frame);
+	  if (_rcvd_frame.command() == "MESSAGE") 	process_MESSAGE(_rcvd_frame);
+	  if (_rcvd_frame.command() == "RECEIPT") 	process_RECEIPT(_rcvd_frame);
+	  if (_rcvd_frame.command() == "ERROR")		process_ERROR(_rcvd_frame);
+	  */
   };
+
+  //-----------------------------------------
+  void BoostStomp::process_CONNECTED(Frame& _rcvd_frame)
+  //-----------------------------------------
+  {
+	  m_connected = true;
+	  // try to get supported protocol version from headers
+	  if (_rcvd_frame.headers().find("version") != _rcvd_frame.headers().end()) {
+		  m_protocol_version =  _rcvd_frame.headers()["version"];
+		  debug_print(boost::format("server supports STOMP version %1%") % m_protocol_version);
+	  }
+	  if (m_protocol_version == "1.1") {
+		  // we are connected to a version 1.1 STOMP server, we can start the heartbeat actor
+		  start_stomp_heartbeat();
+	  }
+	  // in case of reconnection, we need to re-subscribe to all subscriptions
+	  for (subscription_map::iterator it = m_subscriptions.begin(); it != m_subscriptions.end(); it++) {
+		  string topic = (*it).first;
+		  do_subscribe(topic);
+	  };
+  }
+
+  //-----------------------------------------
+  void BoostStomp::process_MESSAGE(Frame& _rcvd_frame)
+  //-----------------------------------------
+  {
+	  bool acked = true;
+	  string* dest = new string(_rcvd_frame.headers()["destination"]);
+	  //
+	  if (pfnOnStompMessage_t callback_function = m_subscriptions[*dest]) {
+		  debug_print("-- consume_frame: firing callback");
+		  //
+		  acked = callback_function(_rcvd_frame);
+	  };
+	  // acknowledge frame, if in "Client" or "Client-Individual" ack mode
+	  if ((m_ackmode == ACK_CLIENT) || (m_ackmode == ACK_CLIENT_INDIVIDUAL)) {
+		  acknowledge(_rcvd_frame, acked);
+	  }
+  }
+
+  //-----------------------------------------
+  void BoostStomp::process_RECEIPT(Frame& _rcvd_frame)
+  //-----------------------------------------
+  {
+  		  string* receipt_id = new string(_rcvd_frame.headers()["receipt_id"]);
+  		  // do something with receipt...
+  		  debug_print(boost::format("receipt-id == %1%") % receipt_id);
+  }
+
+  //-----------------------------------------
+  void BoostStomp::process_ERROR(Frame& _rcvd_frame)
+  //-----------------------------------------
+  {
+  		  string errormessage = (_rcvd_frame.headers().find("message") != _rcvd_frame.headers().end()) ?
+  				  _rcvd_frame.headers()["message"] :
+  				  "(unknown error!)";
+  		  errormessage += _rcvd_frame.body().data();
+  		  throw(errormessage);
+  }
+
 
   //-----------------------------------------
   bool BoostStomp::send_frame( Frame& frame )
   //-----------------------------------------
   {
-	  xpressive::smatch tmp;
-	  if (!regex_match(frame.command(), tmp, re_stomp_client_command)) {
-		  debug_print(boost::format("send_frame: Invalid frame command (%1%)") %  frame.command() );
-		  exit(1);
-	  }
-
 	  debug_print(boost::format("send_frame: Adding %1% frame to send queue...") %  frame.command() );
 	  m_sendqueue_mutex.lock();
 	  m_sendqueue.push(frame);
@@ -396,9 +535,11 @@ namespace STOMP {
 	  return(true);
   }
 
-  // ------------------------------------------
-  // ------------ PUBLIC INTERFACE ------------
-  // ------------------------------------------
+  // ---------------------------------------------------------------------------------------
+  // ---------------------------------------------------------------------------------------
+  // ------------------------ 			PUBLIC INTERFACE 			------------------------
+  // ---------------------------------------------------------------------------------------
+  // ---------------------------------------------------------------------------------------
 
   // ------------------------------------------
   bool BoostStomp::send( string& topic, hdrmap _headers, std::string& body )
@@ -455,6 +596,7 @@ namespace STOMP {
   // returns a new transaction id
   {
 	  hdrmap hm;
+	  // create a new transaction id
 	  hm["transaction"] = lexical_cast<string>(m_transaction_id++);
 	  Frame frame( "BEGIN", hm );
 	  send_frame(frame);
@@ -462,23 +604,28 @@ namespace STOMP {
   };
 
   // ------------------------------------------
-  bool 	BoostStomp::commit(string& transaction_id)
+  bool 	BoostStomp::commit(int transaction_id)
   // ------------------------------------------
   {
 	  hdrmap hm;
-	  hm["transaction"] = transaction_id;
+	  // add required header
+	  hm["transaction"] = lexical_cast<string>(transaction_id);
 	  Frame frame( "COMMIT", hm );
 	  return(send_frame(frame));
   };
 
   // ------------------------------------------
-  bool 	BoostStomp::abort(string& transaction_id)
+  bool 	BoostStomp::abort(int transaction_id)
   // ------------------------------------------
   {
 	  hdrmap hm;
-	  hm["transaction"] = transaction_id;
+	  // add required header
+	  hm["transaction"] = lexical_cast<string>(transaction_id);
 	  Frame frame( "ABORT", hm );
 	  return(send_frame(frame));
   };
 
+
+
 } // end namespace STOMP
+

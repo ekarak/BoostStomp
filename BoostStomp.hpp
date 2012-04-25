@@ -41,7 +41,6 @@ http://en.wikipedia.org/wiki/GNU_Lesser_General_Public_License
 #include <boost/shared_ptr.hpp>
 #include <boost/thread.hpp>
 #include <boost/thread/mutex.hpp>
-#include <boost/xpressive/xpressive.hpp>
 
 #include "StompFrame.hpp"
 #include "helpers.h"
@@ -61,7 +60,6 @@ namespace STOMP {
 	using namespace boost;
 	using namespace boost::asio;
 	using namespace boost::asio::ip;
-	using namespace boost::xpressive;
 
     // ACK mode
     typedef enum {
@@ -71,10 +69,21 @@ namespace STOMP {
     } AckMode;
 
     // Stomp message callback function prototype
-    typedef void (*pfnOnStompMessage_t)( Frame* _frame );
+    typedef bool (*pfnOnStompMessage_t)( Frame& );
 
     // Stomp subscription map (topic => callback)
     typedef std::map<std::string, pfnOnStompMessage_t> subscription_map;
+
+
+    // STOMP server command handler methods
+    //typedef const boost::_bi::bind_t<void (&)(STOMP::Frame&), boost::_mfi::dm<void(STOMP::Frame&), STOMP::BoostStomp>, boost::_bi::list1<boost::arg<1> > > pfnStompCommandHandler_t;
+
+    typedef void (BoostStomp::*pfnStompCommandHandler_t)( Frame& );
+
+    //typedef void (*pfnStompCommandHandler_t)(BoostStomp::*, STOMP::Frame&);
+    ///typedef boost::function<void(Frame&)> 				pfnStompCommandHandler_t;
+    typedef std::map<string, pfnStompCommandHandler_t> 	stomp_server_command_map_t;
+    static 	stomp_server_command_map_t					stomp_server_command_map;
 
     // here we go
 	// -------------
@@ -116,13 +125,14 @@ namespace STOMP {
             bool send_frame( Frame& _frame );
             bool do_subscribe (string& topic);
             //
-
             void consume_frame(Frame& _rcvd_frame);
+            void process_CONNECTED(Frame& _rcvd_frame);
+            void process_MESSAGE(Frame& _rcvd_frame);
+            void process_RECEIPT(Frame& _rcvd_frame);
+            void process_ERROR(Frame& _rcvd_frame);
 
             void start_connect(tcp::resolver::iterator endpoint_iter);
             void handle_connect(const boost::system::error_code& ec, tcp::resolver::iterator endpoint_iter);
-
-            void start_stomp_connect(tcp::resolver::iterator endpoint_iter);
 
             //TODO: void setup_stomp_heartbeat(int cx, int cy);
 
@@ -136,6 +146,13 @@ namespace STOMP {
             void handle_stomp_write(const boost::system::error_code& ec);
 
             void worker( boost::shared_ptr< boost::asio::io_service > io_service );
+            //
+            // Frame constructor from the first available STOMP frame in stomp_response streambuf
+            Frame* parse_next();
+
+            // return a vector of all Frame's in a streambuf
+            vector<Frame*> parse_all_frames();
+
         //----------------
         public:
         //----------------
@@ -152,18 +169,16 @@ namespace STOMP {
             bool send      ( std::string& topic, hdrmap _headers, std::string& body, pfnOnStompMessage_t callback );
             bool subscribe 	( std::string& topic, pfnOnStompMessage_t callback );
             bool unsubscribe ( std::string& topic );
-            bool acknowledge ( Frame& _frame );
+            bool acknowledge ( Frame& _frame, bool acked );
             // STOMP transactions
             int  begin(); // returns a new transaction id
-            bool commit(string& transaction_id);
-            bool abort(string& transaction_id);
+            bool commit(int transaction_id);
+            bool abort(int transaction_id);
             //
             AckMode get_ackmode() { return m_ackmode; };
             //
     }; //class
-    
 
 }
-
 
 #endif

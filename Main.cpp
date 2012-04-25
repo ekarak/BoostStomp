@@ -43,16 +43,16 @@ static string       notifications_topic = "/queue/zwave/monitor";
 // -------------------------------------------------------
 // a callback for any STOMP Frames in subscribed channels
 // -------------------------------------------------------
-STOMP::pfnOnStompMessage_t subscription_callback(STOMP::Frame* _frame) {
+bool subscription_callback(STOMP::Frame& _frame) {
 	cout << "--Incoming STOMP Frame--" << endl;
 	cout << "  Headers:" << endl;
 	STOMP::hdrmap::iterator it;
-	for ( it = _frame->headers().begin() ; it != _frame->headers().end(); it++ )
+	for ( it = _frame.headers().begin() ; it != _frame.headers().end(); it++ )
 	    cout << "\t" << (*it).first << "\t=>\t" << (*it).second << endl;
 	//
-	cout << "  Body: (size: " << _frame->body().size() << " chars):" << endl;
-	cout << _frame->body() << endl;
-	return 0;
+	cout << "  Body: (size: " << _frame.body().size() << " chars):" << endl;
+	cout << _frame.body().data() << endl;
+	return(true); // return false if we want to disacknowledge the frame (send NACK instead of ACK)
 }
 
 // -----------------------------------------
@@ -81,12 +81,15 @@ int main(int argc, char *argv[]) {
         // add an outgoing message to the queue
         stomp_client->send(notifications_topic, headers, body);
         sleep(1);
-        string body2 = string("this is the SECOND message.");
+        string body2 = string("this is the SECOND message.\0with a NULL in it");
         stomp_client->send(notifications_topic, headers, body2);
         sleep(1);
-        string body3 = string("this is the THIRD message.");
+        string body3 = string("this is the THIRD message.\0\0with two NULLs in it");
+        vector<char> binbody;
+        binbody.push_back(body3.c_str());
         stomp_client->send(notifications_topic, headers, body3);
-        while (1) sleep(1);
+        sleep(1);
+        stomp_client->stop();
     } 
     catch (std::exception& e)
     {
