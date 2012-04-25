@@ -277,6 +277,7 @@ namespace STOMP {
 						// special case: content-length
 						if (*key == "content-length") {
 							content_length = lexical_cast<int>(*val);
+							debug_print(boost::format("content-length read back value==%1%") % content_length);
 						}
 						delete key;
 						delete val;
@@ -292,13 +293,11 @@ namespace STOMP {
 					// read until the specified content length
 					_input.read(buffer, content_length);
 					bytes_to_consume += content_length;
-					/*
-					for (int i=0; i<content_length; i++) {
+					// read back the body byte by byte
+					for (size_t i=0; i<content_length; i++) {
 						frame->m_body << buffer[i];
-					} */
-					_str = string(buffer); // TODO: check if NULLs inside the body
+					}
 					//debug_print(boost::format("parse_next phase 3: BODY(%1% bytes)==%2%") % _str.size() % _str);
-					frame->m_body.assign(_str.begin(), _str.end());
 					delete buffer;
 				} else {
 					// read all bytes until the first NULL
@@ -306,7 +305,7 @@ namespace STOMP {
 					//debug_print(boost::format("parse_next phase 3: BODY(%1% bytes)==%2%") % _str.size() % _str);
 					if (_str.length() > 0) {
 						bytes_to_consume += _str.size() + 1;
-						frame->m_body.assign(_str.begin(), _str.end());
+						frame->m_body << _str;
 					};
 				}
 			} else {
@@ -517,7 +516,7 @@ namespace STOMP {
   		  string errormessage = (_rcvd_frame.headers().find("message") != _rcvd_frame.headers().end()) ?
   				  _rcvd_frame.headers()["message"] :
   				  "(unknown error!)";
-  		  errormessage += _rcvd_frame.body().data();
+  		  errormessage += _rcvd_frame.body().c_str();
   		  throw(errormessage);
   }
 
@@ -541,23 +540,6 @@ namespace STOMP {
   // ---------------------------------------------------------------------------------------
   // ---------------------------------------------------------------------------------------
 
-  // ------------------------------------------
-  bool BoostStomp::send( string& topic, hdrmap _headers, std::string& body )
-  // ------------------------------------------
-  {
-	  _headers["destination"] = topic;
-	  Frame frame( "SEND", _headers, body );
-	  return(send_frame(frame));
-  }
-
-  // ------------------------------------------
-  bool BoostStomp::send( string& topic, hdrmap _headers, std::string& body, pfnOnStompMessage_t callback )
-  // ------------------------------------------
-  {
-	  _headers["destination"] = topic;
-	  Frame frame( "SEND", _headers, body );
-	  return(send_frame(frame));
-  }
 
   // ------------------------------------------
   bool BoostStomp::subscribe( string& topic, pfnOnStompMessage_t callback )

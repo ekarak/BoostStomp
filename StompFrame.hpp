@@ -24,7 +24,40 @@ namespace STOMP {
   /* STOMP Frame header map */
   typedef map<string, string> hdrmap;
 
-  struct BoostStomp;
+  class BoostStomp;
+
+  // an std::vector encapsulation in order to store binary strings
+  // (STOMP doesn't prohibit NULLs inside the frame body)
+  class binbody {
+
+  public:
+	  // one vector to hold them all
+	  vector<char> v;
+	  // constructors:
+	  binbody() {};
+	  binbody(string b) {
+		  v.assign(b.begin(), b.end());
+	  }
+	  binbody(string::iterator begin, string::iterator end) {
+		  v.assign(begin, end);
+	  };
+	  // append a string at the end of the body vector
+	  binbody& operator << (std::string s) {
+		  v.insert(v.end(), s.begin(), s.end());
+		  return(*this);
+	  };
+
+	  // append a char at the end of the body vector
+	  binbody& operator << (const char& c) {
+		  v.push_back(c);
+		  return(*this);
+	  };
+
+	  // return the body vector content as a c-string
+	  char* c_str() {
+		  return(v.data());
+	  };
+  };
 
   class Frame {
 	friend class BoostStomp;
@@ -33,7 +66,7 @@ namespace STOMP {
     protected:
       string    m_command;
       hdrmap    m_headers;
-      vector<char> m_body;
+      binbody 	m_body;
 
       boost::asio::streambuf request;
 
@@ -49,10 +82,11 @@ namespace STOMP {
     	  m_headers(h)
       {};
 
-      Frame(string cmd, hdrmap h, string b):
+      template <typename BodyType>
+      Frame(string cmd, hdrmap h, BodyType b):
     	  m_command(cmd),
     	  m_headers(h),
-    	  m_body(b.begin(), b.end())
+    	  m_body(b)
       {};
 
       // copy constructor
@@ -66,7 +100,7 @@ namespace STOMP {
       //
       string command()  { return m_command; };
       hdrmap headers()  { return m_headers; };
-      vector<char>& body()	 { return m_body; };
+      binbody& body()	 { return m_body; };
 
       // encode a STOMP Frame into a streambuf
       void encode();

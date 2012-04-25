@@ -82,14 +82,14 @@ namespace STOMP {
 	  }
 	}
 	// special header: content-length
-	if( m_body.size() > 0 ) {
-	  os << "content-length:" << m_body.size() << "\n";
+	if( m_body.v.size() > 0 ) {
+	  os << "content-length:" << m_body.v.size() << "\n";
 	}
 	// write newline signifying end of headers
 	os << "\n";
 	// step 3. Write the body
-	if( m_body.size() > 0 ) {
-		request.sputn(m_body.data(), m_body.size());
+	if( m_body.v.size() > 0 ) {
+		request.sputn(m_body.v.data(), m_body.v.size());
 	  //os << m_body.data();
 		// TODO: check bodies with NULL in them (data() returns char*)
 	}

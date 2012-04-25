@@ -50,8 +50,8 @@ bool subscription_callback(STOMP::Frame& _frame) {
 	for ( it = _frame.headers().begin() ; it != _frame.headers().end(); it++ )
 	    cout << "\t" << (*it).first << "\t=>\t" << (*it).second << endl;
 	//
-	cout << "  Body: (size: " << _frame.body().size() << " chars):" << endl;
-	cout << _frame.body().data() << endl;
+	cout << "  Body: (size: " << _frame.body().v.size() << " chars):" << endl;
+	hexdump(_frame.body().c_str(), _frame.body().v.size() );
 	return(true); // return false if we want to disacknowledge the frame (send NACK instead of ACK)
 }
 
@@ -81,13 +81,16 @@ int main(int argc, char *argv[]) {
         // add an outgoing message to the queue
         stomp_client->send(notifications_topic, headers, body);
         sleep(1);
-        string body2 = string("this is the SECOND message.\0with a NULL in it");
+        // send another one
+        string body2 = string("this is the SECOND message.");
         stomp_client->send(notifications_topic, headers, body2);
         sleep(1);
-        string body3 = string("this is the THIRD message.\0\0with two NULLs in it");
-        vector<char> binbody;
-        binbody.push_back(body3.c_str());
-        stomp_client->send(notifications_topic, headers, body3);
+        // add some binary content in the body
+        binbody bb;
+        bb << "this is the THIRD message.";
+        bb << '\0';
+        bb << "with a NULL in it.";
+        stomp_client->send(notifications_topic, headers, bb);
         sleep(1);
         stomp_client->stop();
     } 

@@ -165,8 +165,16 @@ namespace STOMP {
             void stop();
 
             // thread-safe methods called from outside the thread loop
-            bool send      ( std::string& topic, hdrmap _headers, std::string& body );
-            bool send      ( std::string& topic, hdrmap _headers, std::string& body, pfnOnStompMessage_t callback );
+            template <typename BodyType>
+            bool send      ( std::string& _topic, hdrmap _headers, BodyType& _body, pfnOnStompMessage_t callback = NULL)  {
+          	  _headers["destination"] = _topic;
+          	  Frame frame( "SEND", _headers, _body );
+          	  return(send_frame(frame));
+            }
+
+
+            //bool send      ( std::string& topic, hdrmap _headers, std::string& body );
+            //
             bool subscribe 	( std::string& topic, pfnOnStompMessage_t callback );
             bool unsubscribe ( std::string& topic );
             bool acknowledge ( Frame& _frame, bool acked );
