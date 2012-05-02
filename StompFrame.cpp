@@ -24,8 +24,8 @@ http://en.wikipedia.org/wiki/GNU_Lesser_General_Public_License
 
 #include <boost/format.hpp>
 #include <boost/lexical_cast.hpp>
+
 #include "BoostStomp.hpp"
-//#include "StompFrame.hpp"
 #include "helpers.h"
 
 namespace STOMP {
@@ -45,27 +45,25 @@ namespace STOMP {
    * \c (octet 92 and 99) translates to : (octet 58)
    * \\ (octet 92 and 92) translates to \ (octet 92)
    */
-  string* encode_header_token(const char* str) {
-	  string* result = new string(str);
-	  boost::algorithm::replace_all(*result, "\n", "\\n");
-	  boost::algorithm::replace_all(*result, ":", "\\c");
-	  boost::algorithm::replace_all(*result, "\\", "\\\\");
-	  return(result);
+  string& encode_header_token(string& str) {
+	  boost::algorithm::replace_all(str, "\n", "\\n");
+	  boost::algorithm::replace_all(str, ":", "\\c");
+	  boost::algorithm::replace_all(str, "\\", "\\\\");
+	  return(str);
   };
 
-  string* decode_header_token(const char* str) {
-	  string* result = new string(str);
-	  boost::algorithm::replace_all(*result, "\\n", "\n");
-	  boost::algorithm::replace_all(*result, "\\c", ":");
-	  boost::algorithm::replace_all(*result, "\\\\", "\\");
-	  return(result);
+  string& decode_header_token(string& str) {
+	  boost::algorithm::replace_all(str, "\\n", "\n");
+	  boost::algorithm::replace_all(str, "\\c", ":");
+	  boost::algorithm::replace_all(str, "\\\\", "\\");
+	  return(str);
   };
 
-  void Frame::encode()
+  boost::asio::streambuf& Frame::encode()
   // -------------------------------------
   {
 	// prepare an output stream
-	ostream os(&request);
+	ostream os(&m_request);
 	// step 1. write the command
 	if (m_command.length() > 0) {
 	  os << m_command << "\n";
@@ -75,9 +73,11 @@ namespace STOMP {
 	// step 2. Write the headers (key-value pairs)
 	if( m_headers.size() > 0 ) {
 	  for ( hdrmap::iterator it = m_headers.begin() ; it != m_headers.end(); it++ ) {
-		os << *encode_header_token((*it).first.c_str())
+		  string key = (*it).first;
+		  string val = (*it).second;
+		os << encode_header_token(key)
 			<< ":"
-			<< *encode_header_token((*it).second.c_str())
+			<< encode_header_token(val)
 			<< "\n";
 	  }
 	}
@@ -89,12 +89,11 @@ namespace STOMP {
 	os << "\n";
 	// step 3. Write the body
 	if( m_body.v.size() > 0 ) {
-		request.sputn(m_body.v.data(), m_body.v.size());
-	  //os << m_body.data();
-		// TODO: check bodies with NULL in them (data() returns char*)
+		m_request.sputn(m_body.v.data(), m_body.v.size());
 	}
 	// write terminating NULL char
-	request.sputc('\0');
+	m_request.sputc('\0');
+	return(m_request);
   };
 
 }

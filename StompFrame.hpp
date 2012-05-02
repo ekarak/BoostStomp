@@ -68,7 +68,7 @@ namespace STOMP {
       hdrmap    m_headers;
       binbody 	m_body;
 
-      boost::asio::streambuf request;
+      boost::asio::streambuf m_request;
 
     public:
 
@@ -102,13 +102,13 @@ namespace STOMP {
       hdrmap headers()  { return m_headers; };
       binbody& body()	 { return m_body; };
 
-      // encode a STOMP Frame into a streambuf
-      void encode();
+      // encode a STOMP Frame into m_request and return it
+      boost::asio::streambuf& encode();
 
   }; // class Frame
 
-  string* encode_header_token(const char* str);
-  string* decode_header_token(const char* str);
+  string& encode_header_token(string& str);
+  string& decode_header_token(string& str);
 
 } // namespace STOMP
 

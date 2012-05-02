@@ -46,8 +46,8 @@ static string       notifications_topic = "/queue/zwave/monitor";
 bool subscription_callback(STOMP::Frame& _frame) {
 	cout << "--Incoming STOMP Frame--" << endl;
 	cout << "  Headers:" << endl;
-	STOMP::hdrmap::iterator it;
-	for ( it = _frame.headers().begin() ; it != _frame.headers().end(); it++ )
+	hdrmap headers = _frame.headers();
+	for (STOMP::hdrmap::iterator it = headers.begin() ; it != headers.end(); it++ )
 	    cout << "\t" << (*it).first << "\t=>\t" << (*it).second << endl;
 	//
 	cout << "  Body: (size: " << _frame.body().v.size() << " chars):" << endl;

@@ -48,16 +48,20 @@ namespace STOMP {
   // ----------------------------
   BoostStomp::BoostStomp(string& hostname, int& port, AckMode ackmode /*= ACK_AUTO*/):
   // ----------------------------
+		// protected members setup
     m_hostname(hostname),
     m_port(port),
     m_ackmode(ackmode),
     m_stopped(true),
     m_connected(false),
+    m_io_service		(new io_service()),
+    m_io_service_work	(new io_service::work(*m_io_service)),
+    m_socket			(new tcp::socket(*m_io_service)),
+    // private members
     m_protocol_version("1.0"),
     m_transaction_id(0)
   // ----------------------------
   {
-	m_io_service = boost::shared_ptr< io_service > ( new io_service  );
 	// Heartbeat setup
 	m_heartbeat_timer = boost::shared_ptr< deadline_timer> ( new deadline_timer( *m_io_service ));
 	std::ostream os( &m_heartbeat);
@@ -76,8 +80,12 @@ namespace STOMP {
   BoostStomp::~BoostStomp()
   // ----------------------------
   {
+	  // first stop io_service so as to exit the run loop (when idle)
+	  m_io_service->stop();
+	  // then interrupt the worker thread
 	  worker_thread->interrupt();
-	  delete m_socket;
+	  //delete m_heartbeat_timer;
+	  //delete worker_thread;
   }
 
   // ----------------------------
@@ -88,6 +96,7 @@ namespace STOMP {
 	  debug_print("Worker thread starting...");
 	  while(!m_stopped) {
 		  io_service->run();
+		  io_service->reset();
 		  sleep(1);
 	  }
 	  debug_print("Worker thread finished.");
@@ -105,7 +114,6 @@ namespace STOMP {
   {
 	debug_print("BoostStomp starting...");
 	m_stopped = false;
-	m_socket 		= new tcp::socket(*m_io_service);
 	tcp::resolver 	resolver(*m_io_service);
 	tcp::resolver::iterator endpoint_iter = resolver.resolve(tcp::resolver::query(
 			m_hostname,
@@ -121,19 +129,17 @@ namespace STOMP {
   // response to graceful termination or an unrecoverable error.
   void BoostStomp::stop()
   {
-	debug_print("BoostStomp stopping...");
+	debug_print("stopping...");
 	if (m_connected && m_socket->is_open()) {
 	  Frame frame( "DISCONNECT");
-	  frame.encode();
 	  debug_print("Sending DISCONNECT frame...");
-	  boost::asio::write(*m_socket, frame.request);
+	  boost::asio::write(*m_socket, frame.encode());
 	}
 	m_connected = false;
     m_stopped = true;
     m_heartbeat_timer->cancel();
     //
     m_socket->close();
-    delete m_socket;
     //
   }
 
@@ -149,23 +155,22 @@ namespace STOMP {
   {
     if (endpoint_iter != tcp::resolver::iterator())
     {
-      debug_print(boost::format("TCP: Trying %1%...") % endpoint_iter->endpoint() );
+      //debug_print(boost::format("TCP: Trying %1%...") % endpoint_iter->endpoint() );
 
       // Try TCP connection synchronously (the first frame to send is the CONNECT frame)
       boost::system::error_code ec;
       m_socket->connect(endpoint_iter->endpoint(), ec);
       if (!ec) {
           // now we are connected to STOMP server's TCP port/
-          debug_print(boost::format("TCP connection to %1% is active") % endpoint_iter->endpoint() );
+          debug_print(boost::format("STOMP TCP connection to %1% is active") % endpoint_iter->endpoint() );
 
     	  // Send the CONNECT request synchronously (immediately).
     	  hdrmap headers;
     	  headers["accept-version"] = "1.1";
     	  headers["host"] = m_hostname;
     	  Frame frame( "CONNECT", headers );
-    	  frame.encode();
-    	  debug_print("Sending CONNECT frame...");
-    	  boost::asio::write(*m_socket, frame.request);
+    	  //debug_print("Sending CONNECT frame...");
+    	  boost::asio::write(*m_socket, frame.encode());
 
     	  // start the read actor so as to receive the CONNECTED frame
           start_stomp_read();
@@ -247,7 +252,6 @@ namespace STOMP {
 		istream _input(&stomp_response);
 		size_t bytes_to_consume = 0, content_length = 0;
 		Frame* frame = NULL;
-		vector< string > header_parts;
 
 		try {
 
@@ -265,22 +269,21 @@ namespace STOMP {
 			// STEP 2: parse all headers
 			if (frame != NULL) {
 				//debug_print("parse_next phase 2");
+				vector< string > header_parts;
 				while (std::getline(_input, _str)) {
 					//hexdump(_str.c_str(), _str.length());
 					boost::algorithm::split(header_parts, _str, is_any_of(":"));
 					if (header_parts.size() > 1) {
-						string* key = decode_header_token(header_parts[0].c_str());
-						string* val = decode_header_token(header_parts[1].c_str());
-						//debug_print(boost::format("parse_next phase 2: HEADER[%1%]==%2%") % *key % *val);
-						frame->m_headers[*key] = *val;
+						string& key = decode_header_token(header_parts[0]);
+						string& val = decode_header_token(header_parts[1]);
+						//debug_print(boost::format("parse_next phase 2: HEADER[%1%]==%2%") % key % val);
+						frame->m_headers[key] = val;
 						bytes_to_consume += _str.size()+1;
 						// special case: content-length
-						if (*key == "content-length") {
-							content_length = lexical_cast<int>(*val);
-							debug_print(boost::format("content-length read back value==%1%") % content_length);
+						if (key == "content-length") {
+							content_length = lexical_cast<int>(val);
+							//debug_print(boost::format("content-length read back value==%1%") % content_length);
 						}
-						delete key;
-						delete val;
 					} else {
 						break;
 					}
@@ -289,16 +292,12 @@ namespace STOMP {
 				// STEP 3: parse the body
 				//debug_print("parse_next phase 3");
 				if (content_length > 0) {
-					char* buffer = new char[content_length];
-					// read until the specified content length
-					_input.read(buffer, content_length);
-					bytes_to_consume += content_length;
 					// read back the body byte by byte
+					char c;
 					for (size_t i=0; i<content_length; i++) {
-						frame->m_body << buffer[i];
+						_input.get(c);
+						frame->m_body << c;
 					}
-					//debug_print(boost::format("parse_next phase 3: BODY(%1% bytes)==%2%") % _str.size() % _str);
-					delete buffer;
 				} else {
 					// read all bytes until the first NULL
 					std::getline(_input, _str, '\0');
@@ -316,7 +315,7 @@ namespace STOMP {
 
 		}
 		stomp_response.consume(bytes_to_consume);
-		//debug_print(boost::format("-- parse_frame, consumed %1% bytes from stomp_response") % bytes_to_consume);
+		debug_print(boost::format("-- parse_frame, consumed %1% bytes from stomp_response") % bytes_to_consume);
 		return(frame);
   };
 
@@ -325,22 +324,19 @@ namespace STOMP {
   // ----------------------------
   {
 	  vector<Frame*> results;
-	  istream response_stream(&stomp_response);
-	  string str;
 	  //
 	  // get all the responses in response stream
-	  //debug_print(boost::format("parse_all_frames before: (%1% bytes in stomp_response)") % stomp_response.size() );
+	  debug_print(boost::format("parse_all_frames before: (%1% bytes in stomp_response)") % stomp_response.size() );
 	  try {
 		  //
 		  // iterate over all frame matches
 		  //
 		  while (Frame* next_frame = parse_next()) {
-			  debug_print(boost::format("parse_all_frames in loop: (%1% bytes in str, %2% bytes still in stomp_response)") % str.size() % stomp_response.size());
+			  debug_print(boost::format("parse_all_frames in loop: (%1% bytes still in stomp_response)") % stomp_response.size());
 			  results.push_back(next_frame);
 		  }
 	  } catch(...) {
 		  debug_print("parse_response in loop: exception in Frame constructor");
-// TODO
 	  }
 	  //cout << "exiting, " << stomp_response.size() << " bytes still in stomp_response" << endl;
       return(results);
@@ -358,20 +354,18 @@ namespace STOMP {
     if ((m_stopped) || (!m_connected))
       return;
 
-    //debug_print("start_stomp_write");
+    debug_print("start_stomp_write");
 
     // send all STOMP frames in queue
     m_sendqueue_mutex.lock();
     if (m_sendqueue.size() > 0) {
     	Frame& frame = m_sendqueue.front();
-    	frame.encode();
     	debug_print(boost::format("Sending %1% frame...") %  frame.command()  );
         boost::asio::async_write(
         		*m_socket,
-        		frame.request,
+        		frame.encode(),
         		boost::bind(&BoostStomp::handle_stomp_write, this, _1)
         );
-        m_sendqueue.pop();
     }
     m_sendqueue_mutex.unlock();
 
@@ -385,6 +379,10 @@ namespace STOMP {
 	      return;
 
 	  if (!ec) {
+		  // call pop() to delete the last frame in queue
+		  m_sendqueue_mutex.lock();
+		  m_sendqueue.pop();
+		  m_sendqueue_mutex.unlock();
 		  // process next frame in queue, if any
 		  start_stomp_write();
 	  } else {
@@ -399,7 +397,7 @@ namespace STOMP {
   // -----------------------------------------------
   {
 			// Start an asynchronous operation to send a heartbeat message.
-			debug_print("Sending heartbeat...");
+			//debug_print("Sending heartbeat...");
 			boost::asio::async_write(
 					*m_socket,
 					m_heartbeat,
@@ -448,7 +446,7 @@ namespace STOMP {
   void BoostStomp::consume_frame(Frame& _rcvd_frame)
   // ------------------------------------------
   {
-	  //debug_print(boost::format("-- consume_frame: received %1%") % _rcvd_frame.command());
+	  debug_print(boost::format("-- consume_frame: calling %1% command handler") % _rcvd_frame.command());
 	  pfnStompCommandHandler_t handler = stomp_server_command_map[_rcvd_frame.command()];
 	  (this->*handler)(_rcvd_frame);
 
@@ -487,10 +485,10 @@ namespace STOMP {
   //-----------------------------------------
   {
 	  bool acked = true;
-	  string* dest = new string(_rcvd_frame.headers()["destination"]);
+	  string dest = string(_rcvd_frame.headers()["destination"]);
 	  //
-	  if (pfnOnStompMessage_t callback_function = m_subscriptions[*dest]) {
-		  debug_print("-- consume_frame: firing callback");
+	  if (pfnOnStompMessage_t callback_function = m_subscriptions[dest]) {
+		  debug_print(boost::format("-- consume_frame: firing callback for %1%") % dest);
 		  //
 		  acked = callback_function(_rcvd_frame);
 	  };
@@ -504,7 +502,7 @@ namespace STOMP {
   void BoostStomp::process_RECEIPT(Frame& _rcvd_frame)
   //-----------------------------------------
   {
-  		  string* receipt_id = new string(_rcvd_frame.headers()["receipt_id"]);
+  		  string receipt_id = string(_rcvd_frame.headers()["receipt_id"]);
   		  // do something with receipt...
   		  debug_print(boost::format("receipt-id == %1%") % receipt_id);
   }
@@ -529,7 +527,6 @@ namespace STOMP {
 	  m_sendqueue_mutex.lock();
 	  m_sendqueue.push(frame);
 	  m_sendqueue_mutex.unlock();
-	  // start the write actor
 	  start_stomp_write();
 	  return(true);
   }

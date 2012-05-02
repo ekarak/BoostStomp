@@ -49,10 +49,10 @@ main:   Main.o  BoostStomp.o StompFrame.o helpers.o
 #	upx main
 	
 libbooststomp.a:	BoostStomp.o StompFrame.o
-	$(AR) $@ BoostStomp.o StompFrame.o
+	$(AR) $@ BoostStomp.o StompFrame.o helpers.o
 	
 libbooststomp.so:
-	$(CXX) -shared -Wl,-soname,$@ -o $@  BoostStomp.o StompFrame.o
+	$(CXX) -shared -Wl,-soname,$@ -o $@  BoostStomp.o StompFrame.o helpers.o
 
 dist:	main
 	rm -f BoostStomp.tar.gz

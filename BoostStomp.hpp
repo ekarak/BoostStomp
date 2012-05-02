@@ -97,9 +97,7 @@ namespace STOMP {
             std::queue<Frame>   m_sendqueue;
             boost::mutex        m_sendqueue_mutex;
             subscription_map    m_subscriptions;
-
-		 	tcp::socket* 		m_socket;
-        //
+            //
             std::string         m_hostname;
             int                 m_port;
             AckMode             m_ackmode;
@@ -108,8 +106,11 @@ namespace STOMP {
             bool		m_connected; // have we completed application-level STOMP connection?
 
             boost::shared_ptr< io_service > 	m_io_service;
-			//boost::shared_ptr< io_service::work > m_io_service_work;
+			boost::shared_ptr< io_service::work > m_io_service_work;
+			tcp::socket* 						m_socket;
 
+            //io_service* 			m_io_service;
+            //io_service::work* 	m_io_service_work;
         //----------------
         private:
         //----------------
