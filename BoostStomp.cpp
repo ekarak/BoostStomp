@@ -48,12 +48,14 @@ namespace STOMP {
   // ----------------------------
   BoostStomp::BoostStomp(string& hostname, int& port, AckMode ackmode /*= ACK_AUTO*/):
   // ----------------------------
-		// protected members setup
-    m_hostname(hostname),
-    m_port(port),
-    m_ackmode(ackmode),
-    m_stopped(true),
-    m_connected(false),
+	// protected members setup
+	m_sendqueue 		(new std::queue<Frame*>()),
+	m_sendqueue_mutex 	(new boost::mutex()),
+    m_hostname	(hostname),
+    m_port		(port),
+    m_ackmode	(ackmode),
+    m_stopped	(true),
+    m_connected	(false),
     m_io_service		(new io_service()),
     m_io_service_work	(new io_service::work(*m_io_service)),
     m_strand			(new io_service::strand(*m_io_service)),
@@ -208,7 +210,7 @@ namespace STOMP {
   void BoostStomp::start_stomp_read_headers()
   // -----------------------------------------------
   {
-	debug_print("start_stomp_read");
+	//debug_print("start_stomp_read");
     // Start an asynchronous operation to read at least the STOMP frame command & headers (till the double newline delimiter)
      boost::asio::async_read_until(
     	*m_socket,
@@ -306,16 +308,15 @@ namespace STOMP {
     if ((m_stopped) || (!m_connected))
       return;
 
-    debug_print("start_stomp_write");
-    Frame* frame;
+    //debug_print("start_stomp_write");
+    Frame* frame = NULL;
     // send all STOMP frames in queue
-    m_sendqueue_mutex.lock();
-    if (m_sendqueue.size() > 0) {
-    	frame = m_sendqueue.front();
-    	if (frame != NULL) {
+    m_sendqueue_mutex->lock();
+    if (m_sendqueue->size() > 0) {
+    	if ((frame = m_sendqueue->front()) != NULL) {
     		debug_print(boost::format("Sending %1% frame...") %  frame->command() );
     		frame->encode(stomp_request);
-
+    		//
     		boost::asio::async_write(
         		*m_socket,
         		stomp_request,
@@ -323,7 +324,7 @@ namespace STOMP {
     		);
     	};
     }
-    m_sendqueue_mutex.unlock();
+    m_sendqueue_mutex->unlock();
 
   }
 
@@ -337,9 +338,9 @@ namespace STOMP {
 	  if (!ec) {
 		  debug_print("Sent!");
 		  // call pop() to delete the last frame in queue
-		  m_sendqueue_mutex.lock();
-		  m_sendqueue.pop();
-		  m_sendqueue_mutex.unlock();
+		  m_sendqueue_mutex->lock();
+		  m_sendqueue->pop();
+		  m_sendqueue_mutex->unlock();
 		  // process next frame in queue, if any
 		  start_stomp_write();
 	  } else {
@@ -385,18 +386,6 @@ namespace STOMP {
       std::cout << "Error on sending heartbeat: " << ec.message() << "\n";
       stop();
     }
-  }
-
-  // ------------------------------------------
-  bool BoostStomp::acknowledge(Frame* frame, bool acked = true)
-  // ------------------------------------------
-  {
-	  hdrmap hm;
-	  hm["message-id"] = frame->headers()["message-id"];
-	  hm["subscription"] = frame->headers()["subscription"];
-	  string _ack_cmd = (acked ? "ACK" : "NACK");
-	  Frame* _ackframe = new Frame( _ack_cmd, hm );
-	  return(send_frame(_ackframe));
   }
 
   // ------------------------------------------
@@ -476,7 +465,8 @@ namespace STOMP {
   				  headers["message"] :
   				  "(unknown error!)";
   		  errormessage += m_rcvd_frame->body().c_str();
-  		  throw(errormessage);
+  		  //throw(errormessage);
+  		  cerr << endl << "============= BoostStomp got an ERROR frame from server: =================" << endl << errormessage << endl;
   }
 
 
@@ -487,10 +477,10 @@ namespace STOMP {
 	  // send_frame is called from the application thread. Do not dereference frame here!!! (shared data)
 	  //debug_print(boost::format("send_frame: Adding frame to send queue...") %  frame->command() );
 	  debug_print("send_frame: Adding frame to send queue...");
-	  m_sendqueue_mutex.lock();
-	  m_sendqueue.push(frame);
-	  m_sendqueue_mutex.unlock();
-	  // tell io_service to send the frame from the worker thread
+	  m_sendqueue_mutex->lock();
+	  m_sendqueue->push(frame);
+	  m_sendqueue_mutex->unlock();
+	  // tell io_service to start the output actor so as the frame get sent from the worker thread
 	  usleep(1000);
 	  m_strand->post(
 			boost::bind(&BoostStomp::start_stomp_write, this)
@@ -520,8 +510,7 @@ namespace STOMP {
 	  hdrmap hm;
 	  hm["id"] = lexical_cast<string>(boost::this_thread::get_id());
 	  hm["destination"] = topic;
-	  Frame* frame = new Frame( "SUBSCRIBE", hm );
-	  return(send_frame(frame));
+	  return(send_frame(new Frame( "SUBSCRIBE", hm )));
   }
 
 
@@ -531,9 +520,19 @@ namespace STOMP {
   {
 	  hdrmap hm;
 	  hm["destination"] = topic;
-	  Frame* frame = new Frame( "UNSUBSCRIBE", hm );
 	  m_subscriptions.erase(topic);
-	  return(send_frame(frame));
+	  return(send_frame(new Frame( "UNSUBSCRIBE", hm )));
+  }
+
+  // ------------------------------------------
+  bool BoostStomp::acknowledge(Frame* frame, bool acked = true)
+  // ------------------------------------------
+  {
+	  hdrmap hm;
+	  hm["message-id"] = frame->headers()["message-id"];
+	  hm["subscription"] = frame->headers()["subscription"];
+	  string _ack_cmd = (acked ? "ACK" : "NACK");
+	  return(send_frame(new Frame( _ack_cmd, hm )));
   }
 
   // ------------------------------------------
@@ -556,8 +555,7 @@ namespace STOMP {
 	  hdrmap hm;
 	  // add required header
 	  hm["transaction"] = lexical_cast<string>(transaction_id);
-	  Frame* frame = new Frame( "COMMIT", hm );
-	  return(send_frame(frame));
+	  return(send_frame(new Frame( "COMMIT", hm )));
   };
 
   // ------------------------------------------
@@ -567,8 +565,7 @@ namespace STOMP {
 	  hdrmap hm;
 	  // add required header
 	  hm["transaction"] = lexical_cast<string>(transaction_id);
-	  Frame* frame = new Frame( "ABORT", hm );
-	  return(send_frame(frame));
+	  return(send_frame(new Frame( "ABORT", hm )));
   };
 
 } // end namespace STOMP

@@ -94,7 +94,7 @@ int main(int argc, char *argv[]) {
         sleep(1);
         // now some stress test (100 frames)
         STOMP::hdrmap headers2;
-        for (int i = 0;  i < 3; i++) {
+        for (int i = 0;  i < 100; i++) {
         	cout << "Sending stress frame " << i << endl;
         	headers2["count"] = to_string<int>(i);
         	stomp_client->send(notifications_topic, headers2, "");

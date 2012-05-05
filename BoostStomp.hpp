@@ -83,8 +83,8 @@ namespace STOMP {
         protected:
         //----------------
     		Frame* 				m_rcvd_frame;
-            std::queue<Frame*>  m_sendqueue;
-            boost::mutex        m_sendqueue_mutex;
+    		boost::shared_ptr< std::queue<Frame*> >  m_sendqueue;
+    		boost::shared_ptr< boost::mutex >        m_sendqueue_mutex;
             subscription_map    m_subscriptions;
             //
             std::string         m_hostname;
