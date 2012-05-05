@@ -27,10 +27,8 @@
   }
 
   void hexdump(boost::asio::streambuf& sb) {
-      std::istream is(&sb);
-      std::string str;
-      is >> str;
-  	hexdump(str.c_str(), str.size());
+	const char* rawdata = boost::asio::buffer_cast<const char*>(sb.data());
+  	hexdump(rawdata, sb.size());
   }
 
   void debug_print(string& str) {

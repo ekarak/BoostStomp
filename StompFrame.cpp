@@ -24,14 +24,13 @@ http://en.wikipedia.org/wiki/GNU_Lesser_General_Public_License
 
 #include <boost/format.hpp>
 #include <boost/lexical_cast.hpp>
-
 #include "BoostStomp.hpp"
 #include "helpers.h"
 
 namespace STOMP {
 
 	using namespace boost;
-	using namespace boost::assign;
+	using namespace boost::asio;
 
   /*
    * Escaping is needed to allow header keys and values to contain those frame header
@@ -59,11 +58,11 @@ namespace STOMP {
 	  return(str);
   };
 
-  boost::asio::streambuf& Frame::encode()
+  boost::asio::streambuf& Frame::encode(boost::asio::streambuf& _request)
   // -------------------------------------
   {
 	// prepare an output stream
-	ostream os(&m_request);
+	ostream os(&_request);
 	// step 1. write the command
 	if (m_command.length() > 0) {
 	  os << m_command << "\n";
@@ -89,11 +88,111 @@ namespace STOMP {
 	os << "\n";
 	// step 3. Write the body
 	if( m_body.v.size() > 0 ) {
-		m_request.sputn(m_body.v.data(), m_body.v.size());
+		_request.sputn(m_body.v.data(), m_body.v.size());
+		//_request.commit(m_body.v.size());
 	}
 	// write terminating NULL char
-	m_request.sputc('\0');
-	return(m_request);
+	_request.sputc('\0');
+	//_request.commit(1);
+	return(_request);
   };
+
+  // my own version of getline for an asio streambuf
+inline void mygetline (boost::asio::streambuf& sb, string& _str, char delim = '\n') {
+	const char* line = boost::asio::buffer_cast<const char*>(sb.data());
+	char _c;
+	_str.clear();
+	for( size_t i = 0;
+		((i < sb.size()) && ((_c = line[i]) != delim));
+		i++
+	) _str += _c;
+	debug_print( boost::format("mygetline: sb.size==%1%") % sb.size() );
+	hexdump(_str.c_str(), _str.size());
+	//
+	//usleep(100000);
+}
+
+  // construct STOMP frame (command & header) from a streambuf
+  // --------------------------------------------------
+  Frame::Frame(boost::asio::streambuf& stomp_response, const stomp_server_command_map_t& cmd_map)
+  // --------------------------------------------------
+  {
+		string _str;
+
+		try {
+			// STEP 1: find the next STOMP command line in stomp_response.
+			// Chomp unknown lines till the buffer is empty, in which case an exception is raised
+			debug_print("Frame parser phase 1");
+			while (stomp_response.size() > 0) {
+				mygetline(stomp_response, _str);
+				//hexdump(_str.c_str(), _str.length());
+				stomp_response.consume(_str.size() + 1); // plus one for the newline
+				if (_str.size() > 0) {
+					if (cmd_map.find(_str) != cmd_map.end()) {
+						debug_print(boost::format("phase 1: COMMAND==%1%, sb.size==%2%") % _str % stomp_response.size());
+						m_command = _str;
+						break;
+					}
+				} else {
+					throw(NoMoreFrames());
+				}
+			}
+
+			// STEP 2: parse all headers
+			debug_print("Frame parser phase 2");
+			vector< string > header_parts;
+			while (stomp_response.size() > 0) {
+				mygetline(stomp_response, _str);
+				stomp_response.consume(_str.size()+1);
+				boost::algorithm::split(header_parts, _str, is_any_of(":"));
+				if (header_parts.size() > 1) {
+					string key = decode_header_token(header_parts[0]);
+					string val = decode_header_token(header_parts[1]);
+					debug_print(boost::format("phase 2: HEADER[%1%]==%2%") % key % val);
+					m_headers[key] = val;
+					//
+				} else {
+					// no valid header line detected, on to the body scanner
+					break;
+				}
+			}
+			//
+		} catch(NoMoreFrames& e) {
+			debug_print("-- Frame parser ended (no more frames)");
+			throw(e);
+		}
+  };
+
+  // STEP 3: parse the body
+  size_t Frame::parse_body(boost::asio::streambuf& _response)
+  {
+	  std::size_t _content_length = 0, bytecount = 0;
+	  string _str;
+	debug_print("Frame parser phase 3");
+
+	// special case: content-length
+	if (m_headers.find("content-length") != m_headers.end()) {
+		string val = m_headers["content-length"];
+		_content_length = lexical_cast<int>(val);
+		debug_print(boost::format("phase 3: body content-length==%1%") % _content_length);
+	}
+	if (_content_length > 0) {
+		bytecount += _content_length;
+		// read back the body byte by byte
+		const char* rawdata = boost::asio::buffer_cast<const char*>(_response.data());
+		for (size_t i = 0; i < _content_length; i++ ) {
+			m_body << rawdata[i];
+		}
+	} else {
+		// read all bytes until the first NULL
+		mygetline(_response, _str, '\0');
+		bytecount += _str.size();
+		m_body << _str;
+	}
+	bytecount += 1; // for the final frame-terminating NULL
+	debug_print(boost::format("phase 3: consumed %1% bytes, BODY(%2% bytes)==%3%") % bytecount % _str.size() % _str);
+	_response.consume(bytecount);
+	return(bytecount);
+  }
 
 }

@@ -80,8 +80,8 @@ int main(int argc, char *argv[]) {
 
         // add an outgoing message to the queue
         stomp_client->send(notifications_topic, headers, body);
-        sleep(1);
-        // send another one
+
+        // send another one right away
         string body2 = string("this is the SECOND message.");
         stomp_client->send(notifications_topic, headers, body2);
         sleep(1);
@@ -92,6 +92,14 @@ int main(int argc, char *argv[]) {
         bb << "with a NULL in it.";
         stomp_client->send(notifications_topic, headers, bb);
         sleep(1);
+        // now some stress test (100 frames)
+        STOMP::hdrmap headers2;
+        for (int i = 0;  i < 3; i++) {
+        	cout << "Sending stress frame " << i << endl;
+        	headers2["count"] = to_string<int>(i);
+        	stomp_client->send(notifications_topic, headers2, "");
+        };
+        sleep(4);
         stomp_client->stop();
     } 
     catch (std::exception& e)

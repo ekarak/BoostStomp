@@ -10,21 +10,24 @@
 #include <boost/algorithm/string/split.hpp>
 #include <boost/algorithm/string/predicate.hpp>
 #include <boost/algorithm/string/classification.hpp>
-#include <boost/assign/list_of.hpp>
-#include <boost/assign/list_inserter.hpp>
+
 
 namespace STOMP {
 
   using namespace std;
   using namespace boost;
   using namespace boost::asio;
-  using namespace boost::assign;
   using namespace boost::algorithm;
 
   /* STOMP Frame header map */
   typedef map<string, string> hdrmap;
 
   class BoostStomp;
+  class Frame;
+
+  // STOMP server command handler methods
+  typedef void (BoostStomp::*pfnStompCommandHandler_t) ( );
+  typedef std::map<string, pfnStompCommandHandler_t> 	stomp_server_command_map_t;
 
   // an std::vector encapsulation in order to store binary strings
   // (STOMP doesn't prohibit NULLs inside the frame body)
@@ -35,6 +38,9 @@ namespace STOMP {
 	  vector<char> v;
 	  // constructors:
 	  binbody() {};
+	  binbody(binbody &other) {
+		  v = other.v;
+	  }
 	  binbody(string b) {
 		  v.assign(b.begin(), b.end());
 	  }
@@ -59,16 +65,17 @@ namespace STOMP {
 	  };
   };
 
+  //
+  class NoMoreFrames: public boost::exception {};
+
+  //
   class Frame {
 	friend class BoostStomp;
-	friend Frame* parse_next(boost::asio::streambuf&);
 
     protected:
       string    m_command;
       hdrmap    m_headers;
       binbody 	m_body;
-
-      boost::asio::streambuf m_request;
 
     public:
 
@@ -97,13 +104,17 @@ namespace STOMP {
           m_body = other.m_body;
       };
 
+      // constructor from a raw streambuf and a STOMP command map
+      Frame(boost::asio::streambuf&, const stomp_server_command_map_t&);
+      // parse the body from the streambuf, given its size (when==0, parse up to the next NULL)
+      size_t parse_body(boost::asio::streambuf&);
       //
-      string command()  { return m_command; };
-      hdrmap headers()  { return m_headers; };
-      binbody& body()	 { return m_body; };
+      string& 	command()  	{ return m_command; };
+      hdrmap& 	headers()  	{ return m_headers; };
+      binbody& 	body()	 	{ return m_body; };
 
       // encode a STOMP Frame into m_request and return it
-      boost::asio::streambuf& encode();
+      boost::asio::streambuf& encode(boost::asio::streambuf& _request);
 
   }; // class Frame
 

@@ -6,8 +6,9 @@
 
 .SUFFIXES:	.cpp .o .a .s
 
-CC     := gcc
-CXX    := g++
+CC     := colorgcc
+# CXX    := g++
+CXX    := colorgcc
 LD     := ld
 AR     := ar rc
 RANLIB := ranlib
@@ -15,7 +16,7 @@ RANLIB := ranlib
 # Change for DEBUG or RELEASE
 TARGET := DEBUG
 
-DEBUG_CFLAGS    := -Wall -Wno-format -g -DDEBUG -Werror -O0 -DDEBUG_STOMP
+DEBUG_CFLAGS    := -Wall -Wno-format -g -DDEBUG -Werror -O0 -DDEBUG_STOMP -DBOOST_ASIO_ENABLE_BUFFER_DEBUGGING
 RELEASE_CFLAGS  := -Wall -Wno-unknown-pragmas -Wno-format -O3 -DNDEBUG
 
 DEBUG_LDFLAGS	:= -g
