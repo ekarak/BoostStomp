@@ -49,8 +49,8 @@ namespace STOMP {
   BoostStomp::BoostStomp(string& hostname, int& port, AckMode ackmode /*= ACK_AUTO*/):
   // ----------------------------
 	// protected members setup
-	m_sendqueue 		(new std::queue<Frame*>()),
-	m_sendqueue_mutex 	(new boost::mutex()),
+	//m_sendqueue 		(new std::queue<Frame*>()),
+	//m_sendqueue_mutex 	(new boost::mutex()),
     m_hostname	(hostname),
     m_port		(port),
     m_ackmode	(ackmode),
@@ -65,7 +65,6 @@ namespace STOMP {
     m_transaction_id(0)
   // ----------------------------
   {
-	  debug_print("Initializing BoostStomp command map");
 		// map STOMP server commands to handler methods
 		cmd_map["CONNECTED"] = &BoostStomp::process_CONNECTED;
 		cmd_map["MESSAGE"] 	= &BoostStomp::process_MESSAGE;
@@ -113,7 +112,7 @@ namespace STOMP {
   // The endpoint iterator will have been obtained using a tcp::resolver.
   void BoostStomp::start()
   {
-	debug_print("BoostStomp starting...");
+	debug_print("starting...");
 	m_stopped = false;
 	tcp::resolver 	resolver(*m_io_service);
 	tcp::resolver::iterator endpoint_iter = resolver.resolve(tcp::resolver::query(
@@ -174,17 +173,13 @@ namespace STOMP {
     	  headers["host"] = m_hostname;
     	  Frame frame( "CONNECT", headers );
     	  frame.encode(stomp_request);
-    	  //debug_print("Sending CONNECT frame...");
+    	  debug_print("Sending CONNECT frame...");
     	  boost::asio::write(*m_socket, stomp_request);
-    	 // FIXME: what about stomp_request.commit() ???
     	  // start the read actor so as to receive the CONNECTED frame
           start_stomp_read_headers();
-
           // start worker thread (m_io_service.run())
           worker_thread = new boost::thread( boost::bind( &BoostStomp::worker, this, m_io_service ) );
-
       } else {
-
           // We need to close the socket used in the previous connection attempt
           // before starting a new one.
           m_socket->close();
@@ -210,7 +205,7 @@ namespace STOMP {
   void BoostStomp::start_stomp_read_headers()
   // -----------------------------------------------
   {
-	//debug_print("start_stomp_read");
+	//debug_print("start_stomp_read_headers");
     // Start an asynchronous operation to read at least the STOMP frame command & headers (till the double newline delimiter)
      boost::asio::async_read_until(
     	*m_socket,
@@ -229,7 +224,7 @@ namespace STOMP {
     if (!ec)
     {
     	std::size_t bodysize = 0;
-    	debug_print(boost::format("received response (command+headers: %1% bytes)") %  stomp_response.size()  );
+    	//debug_print(boost::format("received response (command+headers: %1% bytes)") %  stomp_response.size()  );
     	start_stomp_read_body(bodysize);
 
 		try {
@@ -254,7 +249,7 @@ namespace STOMP {
   void BoostStomp::start_stomp_read_body(std::size_t bodysize)
   // -----------------------------------------------
   {
-	debug_print("start_stomp_read");
+	//debug_print("start_stomp_read_body");
     // Start an asynchronous operation to read at least the STOMP frame body
 	if (bodysize == 0) {
 		boost::asio::async_read_until(
@@ -278,14 +273,16 @@ namespace STOMP {
 
     if (!ec)
     {
-    	debug_print(boost::format("received response (%1% bytes) (buffer: %2% bytes)") % bytes_transferred %  stomp_response.size()  );
+    	//debug_print(boost::format("received response (%1% bytes) (buffer: %2% bytes)") % bytes_transferred %  stomp_response.size()  );
     	if (m_rcvd_frame != NULL) {
     		m_rcvd_frame->parse_body(stomp_response);
     		consume_received_frame();
     	}
     	//
-    	debug_print("stomp_response contents after Frame scanning:");
-    	hexdump(stomp_response);
+    	//debug_print("stomp_response contents after Frame scanning:");
+    	//hexdump(stomp_response);
+    	// sleep a little: stompserver_ng has difficulties with packet flooding
+    	//usleep(50000);
 		// wait for the next incoming frame from the server...
 		start_stomp_read_headers();
     }
@@ -310,44 +307,23 @@ namespace STOMP {
 
     //debug_print("start_stomp_write");
     Frame* frame = NULL;
+
     // send all STOMP frames in queue
-    m_sendqueue_mutex->lock();
-    if (m_sendqueue->size() > 0) {
-    	if ((frame = m_sendqueue->front()) != NULL) {
+    while (m_sendqueue.try_pop(frame)) {
     		debug_print(boost::format("Sending %1% frame...") %  frame->command() );
     		frame->encode(stomp_request);
-    		//
-    		boost::asio::async_write(
-        		*m_socket,
-        		stomp_request,
-        		boost::bind(&BoostStomp::handle_stomp_write, this, _1)
-    		);
-    	};
-    }
-    m_sendqueue_mutex->unlock();
-
-  }
-
-  // -----------------------------------------------
-  void BoostStomp::handle_stomp_write(const boost::system::error_code& ec)
-  // -----------------------------------------------
-  {
-	    if (m_stopped)
-	      return;
-
-	  if (!ec) {
-		  debug_print("Sent!");
-		  // call pop() to delete the last frame in queue
-		  m_sendqueue_mutex->lock();
-		  m_sendqueue->pop();
-		  m_sendqueue_mutex->unlock();
-		  // process next frame in queue, if any
-		  start_stomp_write();
-	  } else {
-		  m_connected = false;
-		  debug_print(boost::format("Error writing to STOMP server: %1%") % ec.message());
-		  stop();
-	  }
+    		try {
+    			boost::asio::write(
+					*m_socket,
+					stomp_request
+    	    		);
+    			//debug_print("Sent!");
+    		} catch (boost::system::system_error& err){
+    			m_connected = false;
+    			debug_print(boost::format("Error writing to STOMP server: error code:%1%, message:%2%") % err.code() % err.what());
+    			stop();
+    		}
+    };
   }
 
   // -----------------------------------------------
@@ -395,7 +371,7 @@ namespace STOMP {
 	  if (m_rcvd_frame != NULL) {
 		  pfnStompCommandHandler_t handler = cmd_map[m_rcvd_frame->command()];
 		  if (handler != NULL) {
-			  debug_print(boost::format("-- consume_frame: calling %1% command handler") % m_rcvd_frame->command());
+			  //debug_print(boost::format("-- consume_frame: calling %1% command handler") % m_rcvd_frame->command());
 			  // call STOMP command handler
 			  (this->*handler)();
 		  }
@@ -438,7 +414,7 @@ namespace STOMP {
 	  string dest = string(m_rcvd_frame->headers()["destination"]);
 	  //
 	  if (pfnOnStompMessage_t callback_function = m_subscriptions[dest]) {
-		  debug_print(boost::format("-- consume_frame: firing callback for %1%") % dest);
+		  //debug_print(boost::format("-- consume_frame: firing callback for %1%") % dest);
 		  //
 		  acked = callback_function(m_rcvd_frame);
 	  };
@@ -476,12 +452,9 @@ namespace STOMP {
   {
 	  // send_frame is called from the application thread. Do not dereference frame here!!! (shared data)
 	  //debug_print(boost::format("send_frame: Adding frame to send queue...") %  frame->command() );
-	  debug_print("send_frame: Adding frame to send queue...");
-	  m_sendqueue_mutex->lock();
-	  m_sendqueue->push(frame);
-	  m_sendqueue_mutex->unlock();
+	  //debug_print("send_frame: Adding frame to send queue...");
+	  m_sendqueue.push(frame); // concurrent_queue does all the thread safety stuff
 	  // tell io_service to start the output actor so as the frame get sent from the worker thread
-	  usleep(1000);
 	  m_strand->post(
 			boost::bind(&BoostStomp::start_stomp_write, this)
 	  );
@@ -569,4 +542,3 @@ namespace STOMP {
   };
 
 } // end namespace STOMP
-

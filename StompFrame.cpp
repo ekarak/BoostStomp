@@ -106,10 +106,8 @@ inline void mygetline (boost::asio::streambuf& sb, string& _str, char delim = '\
 		((i < sb.size()) && ((_c = line[i]) != delim));
 		i++
 	) _str += _c;
-	debug_print( boost::format("mygetline: sb.size==%1%") % sb.size() );
-	hexdump(_str.c_str(), _str.size());
-	//
-	//usleep(100000);
+	//debug_print( boost::format("mygetline: sb.size==%1%") % sb.size() );
+	//hexdump(_str.c_str(), _str.size());
 }
 
   // construct STOMP frame (command & header) from a streambuf
@@ -122,14 +120,14 @@ inline void mygetline (boost::asio::streambuf& sb, string& _str, char delim = '\
 		try {
 			// STEP 1: find the next STOMP command line in stomp_response.
 			// Chomp unknown lines till the buffer is empty, in which case an exception is raised
-			debug_print("Frame parser phase 1");
+			//debug_print("Frame parser phase 1");
 			while (stomp_response.size() > 0) {
 				mygetline(stomp_response, _str);
 				//hexdump(_str.c_str(), _str.length());
 				stomp_response.consume(_str.size() + 1); // plus one for the newline
 				if (_str.size() > 0) {
 					if (cmd_map.find(_str) != cmd_map.end()) {
-						debug_print(boost::format("phase 1: COMMAND==%1%, sb.size==%2%") % _str % stomp_response.size());
+						//debug_print(boost::format("phase 1: COMMAND==%1%, sb.size==%2%") % _str % stomp_response.size());
 						m_command = _str;
 						break;
 					}
@@ -139,7 +137,7 @@ inline void mygetline (boost::asio::streambuf& sb, string& _str, char delim = '\
 			}
 
 			// STEP 2: parse all headers
-			debug_print("Frame parser phase 2");
+			//debug_print("Frame parser phase 2");
 			vector< string > header_parts;
 			while (stomp_response.size() > 0) {
 				mygetline(stomp_response, _str);
@@ -148,7 +146,7 @@ inline void mygetline (boost::asio::streambuf& sb, string& _str, char delim = '\
 				if (header_parts.size() > 1) {
 					string key = decode_header_token(header_parts[0]);
 					string val = decode_header_token(header_parts[1]);
-					debug_print(boost::format("phase 2: HEADER[%1%]==%2%") % key % val);
+					//debug_print(boost::format("phase 2: HEADER[%1%]==%2%") % key % val);
 					m_headers[key] = val;
 					//
 				} else {
@@ -158,7 +156,7 @@ inline void mygetline (boost::asio::streambuf& sb, string& _str, char delim = '\
 			}
 			//
 		} catch(NoMoreFrames& e) {
-			debug_print("-- Frame parser ended (no more frames)");
+			//debug_print("-- Frame parser ended (no more frames)");
 			throw(e);
 		}
   };
@@ -168,13 +166,13 @@ inline void mygetline (boost::asio::streambuf& sb, string& _str, char delim = '\
   {
 	  std::size_t _content_length = 0, bytecount = 0;
 	  string _str;
-	debug_print("Frame parser phase 3");
+	//debug_print("Frame parser phase 3");
 
 	// special case: content-length
 	if (m_headers.find("content-length") != m_headers.end()) {
 		string val = m_headers["content-length"];
 		_content_length = lexical_cast<int>(val);
-		debug_print(boost::format("phase 3: body content-length==%1%") % _content_length);
+		//debug_print(boost::format("phase 3: body content-length==%1%") % _content_length);
 	}
 	if (_content_length > 0) {
 		bytecount += _content_length;
@@ -190,7 +188,7 @@ inline void mygetline (boost::asio::streambuf& sb, string& _str, char delim = '\
 		m_body << _str;
 	}
 	bytecount += 1; // for the final frame-terminating NULL
-	debug_print(boost::format("phase 3: consumed %1% bytes, BODY(%2% bytes)==%3%") % bytecount % _str.size() % _str);
+	//debug_print(boost::format("phase 3: consumed %1% bytes, BODY(%2% bytes)==%3%") % bytecount % _str.size() % _str);
 	_response.consume(bytecount);
 	return(bytecount);
   }

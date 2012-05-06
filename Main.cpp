@@ -82,16 +82,22 @@ int main(int argc, char *argv[]) {
         stomp_client->send(notifications_topic, headers, body);
 
         // send another one right away
-        string body2 = string("this is the SECOND message.");
-        stomp_client->send(notifications_topic, headers, body2);
-        sleep(1);
-        // add some binary content in the body
         binbody bb;
-        bb << "this is the THIRD message.";
+        bb << "this is the SECOND message.";
         bb << '\0';
         bb << "with a NULL in it.";
+        string body2 = string("this is the SECOND message.");
         stomp_client->send(notifications_topic, headers, bb);
         sleep(1);
+        // add some more binary content in the body
+        binbody bb2;
+        bb2 << "this is the THIRD message.";
+        bb2 << '\0';
+        bb2 << "with";
+        bb2 << '\0';
+        bb2 << "TWO NULLs in it.";
+        stomp_client->send(notifications_topic, headers, bb2);
+        sleep(2);
         // now some stress test (100 frames)
         STOMP::hdrmap headers2;
         for (int i = 0;  i < 100; i++) {

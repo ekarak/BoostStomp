@@ -31,13 +31,12 @@ http://en.wikipedia.org/wiki/GNU_Lesser_General_Public_License
 #include <string>
 #include <sstream>
 #include <iostream>
-#include <queue>
+//#include <queue>
 #include <map>
 #include <set>
 
 #include <boost/asio.hpp>
 #include <boost/asio/deadline_timer.hpp>
-
 #include <boost/shared_ptr.hpp>
 #include <boost/thread.hpp>
 #include <boost/thread/mutex.hpp>
@@ -45,15 +44,6 @@ http://en.wikipedia.org/wiki/GNU_Lesser_General_Public_License
 #include "StompFrame.hpp"
 #include "helpers.h"
 
-// helper template function for pretty-printing just about anything
-template <class T>
-std::string to_string(T t, std::ios_base & (*f)(std::ios_base&))
-{
-  std::ostringstream oss;
-  oss.setf (std::ios_base::showbase);
-  oss << f << t;
-  return oss.str();
-}
 
 namespace STOMP {
 
@@ -83,8 +73,9 @@ namespace STOMP {
         protected:
         //----------------
     		Frame* 				m_rcvd_frame;
-    		boost::shared_ptr< std::queue<Frame*> >  m_sendqueue;
-    		boost::shared_ptr< boost::mutex >        m_sendqueue_mutex;
+    		//boost::shared_ptr< std::queue<Frame*> >  m_sendqueue;
+    		//boost::shared_ptr< boost::mutex >        m_sendqueue_mutex;
+    		concurrent_queue<Frame*>	m_sendqueue;
             subscription_map    m_subscriptions;
             //
             std::string         m_hostname;
@@ -136,7 +127,7 @@ namespace STOMP {
             void handle_stomp_read_body(const boost::system::error_code& ec, std::size_t bytes_transferred);
 
             void start_stomp_write();
-            void handle_stomp_write(const boost::system::error_code& ec);
+            //void handle_stomp_write(const boost::system::error_code& ec);
 
             void worker( boost::shared_ptr< boost::asio::io_service > io_service );
 

@@ -49,4 +49,3 @@
 	    global_stream_lock.unlock();
 #endif
   }
-
