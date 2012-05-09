@@ -112,7 +112,9 @@ namespace STOMP {
       string& 	command()  	{ return m_command; };
       hdrmap& 	headers()  	{ return m_headers; };
       binbody& 	body()	 	{ return m_body; };
-
+      //
+      string& 	operator[](const char* key) { return m_headers[key]; };
+      //
       // encode a STOMP Frame into m_request and return it
       boost::asio::streambuf& encode(boost::asio::streambuf& _request);
 

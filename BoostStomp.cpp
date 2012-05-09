@@ -224,12 +224,20 @@ namespace STOMP {
     if (!ec)
     {
     	std::size_t bodysize = 0;
-    	//debug_print(boost::format("received response (command+headers: %1% bytes)") %  stomp_response.size()  );
-    	start_stomp_read_body(bodysize);
-
 		try {
+			//debug_print("handle_stomp_read_headers");
 			m_rcvd_frame = new Frame(stomp_response, cmd_map);
+			hdrmap& _headers = m_rcvd_frame->headers();
+			// if the frame headers contain 'content-length', use that to call the proper async_read overload
+			if (_headers.find("content-length") != _headers.end()) {
+				string&  content_length =  _headers["content-length"];
+				debug_print(boost::format("received response (command+headers: %1% bytes, content-length: %2%)") %  stomp_response.size() % content_length );
+				sleep(1);
+				bodysize = lexical_cast<size_t>(content_length);
+			}
+	    	start_stomp_read_body(bodysize);
 		} catch(NoMoreFrames&) {
+			debug_print("No more frames!");
 //			break;
 		} catch(std::exception& e) {
 			debug_print(boost::format("handle_stomp_read in loop: unknown exception in Frame constructor:\n%1%") % e.what());
@@ -249,7 +257,7 @@ namespace STOMP {
   void BoostStomp::start_stomp_read_body(std::size_t bodysize)
   // -----------------------------------------------
   {
-	//debug_print("start_stomp_read_body");
+	debug_print("start_stomp_read_body");
     // Start an asynchronous operation to read at least the STOMP frame body
 	if (bodysize == 0) {
 		boost::asio::async_read_until(
@@ -281,8 +289,7 @@ namespace STOMP {
     	//
     	//debug_print("stomp_response contents after Frame scanning:");
     	//hexdump(stomp_response);
-    	// sleep a little: stompserver_ng has difficulties with packet flooding
-    	//usleep(50000);
+
 		// wait for the next incoming frame from the server...
 		start_stomp_read_headers();
     }
@@ -317,10 +324,13 @@ namespace STOMP {
 					*m_socket,
 					stomp_request
     	    		);
-    			//debug_print("Sent!");
+    			debug_print("Sent!");
+    			delete frame;
     		} catch (boost::system::system_error& err){
     			m_connected = false;
     			debug_print(boost::format("Error writing to STOMP server: error code:%1%, message:%2%") % err.code() % err.what());
+    			// put! the kot! down! slowly!
+    			m_sendqueue.push(frame);
     			stop();
     		}
     };
@@ -386,9 +396,9 @@ namespace STOMP {
   {
 	  m_connected = true;
 	  // try to get supported protocol version from headers
-	  hdrmap headers = m_rcvd_frame->headers();
-	  if (headers.find("version") != headers.end()) {
-		  m_protocol_version =  headers["version"];
+	  hdrmap _headers = m_rcvd_frame->headers();
+	  if (_headers.find("version") != _headers.end()) {
+		  m_protocol_version = _headers["version"];
 		  debug_print(boost::format("server supports STOMP version %1%") % m_protocol_version);
 	  }
 	  if (m_protocol_version == "1.1") {
@@ -411,12 +421,15 @@ namespace STOMP {
   //-----------------------------------------
   {
 	  bool acked = true;
-	  string dest = string(m_rcvd_frame->headers()["destination"]);
-	  //
-	  if (pfnOnStompMessage_t callback_function = m_subscriptions[dest]) {
-		  //debug_print(boost::format("-- consume_frame: firing callback for %1%") % dest);
+	  hdrmap& _headers =  m_rcvd_frame->headers();
+	  if (_headers.find("destination") != _headers.end()) {
+		  string& dest = _headers["destination"];
 		  //
-		  acked = callback_function(m_rcvd_frame);
+		  if (pfnOnStompMessage_t callback_function = m_subscriptions[dest]) {
+			  //debug_print(boost::format("-- consume_frame: firing callback for %1%") % dest);
+			  //
+			  acked = callback_function(m_rcvd_frame);
+		  };
 	  };
 	  // acknowledge frame, if in "Client" or "Client-Individual" ack mode
 	  if ((m_ackmode == ACK_CLIENT) || (m_ackmode == ACK_CLIENT_INDIVIDUAL)) {
@@ -428,17 +441,21 @@ namespace STOMP {
   void BoostStomp::process_RECEIPT()
   //-----------------------------------------
   {
-  		  // do something with receipt...
-  		  debug_print(boost::format("receipt-id == %1%") % m_rcvd_frame->headers()["receipt_id"]);
+	  hdrmap& _headers =  m_rcvd_frame->headers();
+	  if (_headers.find("receipt_id") != _headers.end()) {
+		  string& receipt_id = _headers["receipt_id"];
+		  // do something with receipt...
+		  debug_print(boost::format("receipt-id == %1%") % receipt_id);
+	  };
   }
 
   //-----------------------------------------
   void BoostStomp::process_ERROR()
   //-----------------------------------------
   {
-	  hdrmap headers = m_rcvd_frame->headers();
-  		  string errormessage = (headers.find("message") != headers.end()) ?
-  				  headers["message"] :
+	  hdrmap& _headers = m_rcvd_frame->headers();
+  		  string errormessage = (_headers.find("message") != _headers.end()) ?
+  				  _headers["message"] :
   				  "(unknown error!)";
   		  errormessage += m_rcvd_frame->body().c_str();
   		  //throw(errormessage);
@@ -472,6 +489,7 @@ namespace STOMP {
   bool BoostStomp::subscribe( string& topic, pfnOnStompMessage_t callback )
   // ------------------------------------------
   {
+	  //debug_print(boost::format("Setting callback function for %1%") % topic);
 	  m_subscriptions[topic] = callback;
 	  return(do_subscribe(topic));
   }
@@ -501,9 +519,7 @@ namespace STOMP {
   bool BoostStomp::acknowledge(Frame* frame, bool acked = true)
   // ------------------------------------------
   {
-	  hdrmap hm;
-	  hm["message-id"] = frame->headers()["message-id"];
-	  hm["subscription"] = frame->headers()["subscription"];
+	  hdrmap hm = frame->headers();
 	  string _ack_cmd = (acked ? "ACK" : "NACK");
 	  return(send_frame(new Frame( _ack_cmd, hm )));
   }
