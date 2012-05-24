@@ -105,8 +105,9 @@ int main(int argc, char *argv[]) {
         	headers2["count"] = to_string<int>(i);
         	stomp_client->send(notifications_topic, headers2, "");
         };
-        sleep(4);
+        sleep(2);
         stomp_client->stop();
+        delete stomp_client;
     } 
     catch (std::exception& e)
     {

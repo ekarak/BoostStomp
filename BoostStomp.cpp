@@ -83,8 +83,8 @@ namespace STOMP {
 	  m_io_service->stop();
 	  // then interrupt the worker thread
 	  worker_thread->interrupt();
-	  //delete m_heartbeat_timer;
-	  //delete worker_thread;
+	  // delete m_heartbeat_timer; // no need, its a shared_ptr
+	  delete worker_thread;
   }
 
   // ----------------------------
@@ -226,13 +226,12 @@ namespace STOMP {
     	std::size_t bodysize = 0;
 		try {
 			//debug_print("handle_stomp_read_headers");
-			m_rcvd_frame = new Frame(stomp_response, cmd_map);
+			m_rcvd_frame = new Frame(stomp_response, cmd_map); // freed by consume_frame
 			hdrmap& _headers = m_rcvd_frame->headers();
 			// if the frame headers contain 'content-length', use that to call the proper async_read overload
 			if (_headers.find("content-length") != _headers.end()) {
 				string&  content_length =  _headers["content-length"];
 				debug_print(boost::format("received response (command+headers: %1% bytes, content-length: %2%)") %  stomp_response.size() % content_length );
-				sleep(1);
 				bodysize = lexical_cast<size_t>(content_length);
 			}
 	    	start_stomp_read_body(bodysize);
@@ -257,7 +256,7 @@ namespace STOMP {
   void BoostStomp::start_stomp_read_body(std::size_t bodysize)
   // -----------------------------------------------
   {
-	debug_print("start_stomp_read_body");
+	//debug_print("start_stomp_read_body");
     // Start an asynchronous operation to read at least the STOMP frame body
 	if (bodysize == 0) {
 		boost::asio::async_read_until(
@@ -300,6 +299,22 @@ namespace STOMP {
       start();
     }
   }
+
+  // ------------------------------------------
+  void BoostStomp::consume_received_frame()
+  // ------------------------------------------
+  {
+	  if (m_rcvd_frame != NULL) {
+		  pfnStompCommandHandler_t handler = cmd_map[m_rcvd_frame->command()];
+		  if (handler != NULL) {
+			  //debug_print(boost::format("-- consume_frame: calling %1% command handler") % m_rcvd_frame->command());
+			  // call STOMP command handler
+			  (this->*handler)();
+		  }
+		  delete m_rcvd_frame;
+	  }
+	  m_rcvd_frame = NULL;
+  };
 
   // ------------------------------------------------
   // ---------- OUTPUT ACTOR SETUP ------------------
@@ -373,22 +388,6 @@ namespace STOMP {
       stop();
     }
   }
-
-  // ------------------------------------------
-  void BoostStomp::consume_received_frame()
-  // ------------------------------------------
-  {
-	  if (m_rcvd_frame != NULL) {
-		  pfnStompCommandHandler_t handler = cmd_map[m_rcvd_frame->command()];
-		  if (handler != NULL) {
-			  //debug_print(boost::format("-- consume_frame: calling %1% command handler") % m_rcvd_frame->command());
-			  // call STOMP command handler
-			  (this->*handler)();
-		  }
-		  delete m_rcvd_frame;
-	  }
-	  m_rcvd_frame = NULL;
-  };
 
   //-----------------------------------------
   void BoostStomp::process_CONNECTED()
