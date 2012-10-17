@@ -46,7 +46,7 @@ Main.o: Main.cpp
 	$(CXX) $(CFLAGS) -c Main.cpp $(INCLUDES)  
 	
 main:   Main.o  BoostStomp.o StompFrame.o helpers.o
-	$(CXX) -o $@ $(LDFLAGS) Main.o BoostStomp.o StompFrame.o helpers.o
+	$(CXX) -o $@ Main.o BoostStomp.o StompFrame.o helpers.o $(LDFLAGS)
 #	upx main
 	
 libbooststomp.a:	BoostStomp.o StompFrame.o
