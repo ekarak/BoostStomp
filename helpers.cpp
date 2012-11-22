@@ -7,6 +7,7 @@
 
 
 #include <helpers.h>
+#include <iostream>
 
   void hexdump(const void *ptr, int buflen) {
       unsigned char *buf = (unsigned char*)ptr;
