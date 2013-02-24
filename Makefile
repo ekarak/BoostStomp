@@ -6,9 +6,6 @@
 
 .SUFFIXES:	.cpp .o .a .s
 
-CC     := colorgcc
-# CXX    := g++
-CXX    := colorgcc
 LD     := ld
 AR     := ar rc
 RANLIB := ranlib
@@ -22,7 +19,7 @@ RELEASE_CFLAGS  := -Wall -Wno-unknown-pragmas -Wno-format -O3 -DNDEBUG
 DEBUG_LDFLAGS	:= -g
 
 CFLAGS	:= -c $($(TARGET)_CFLAGS) 
-LDFLAGS	:= $($(TARGET)_LDFLAGS) -L/usr/lib/ -L/usr/local/lib -lboost_system -lboost_thread
+LDFLAGS	:= $($(TARGET)_LDFLAGS) -lboost_system -lboost_thread -lpthread
 INCLUDES := -I .
 
 %.o : %.cpp
@@ -46,7 +43,7 @@ Main.o: Main.cpp
 	$(CXX) $(CFLAGS) -c Main.cpp $(INCLUDES)  
 	
 main:   Main.o  BoostStomp.o StompFrame.o helpers.o
-	$(CXX) -o $@ $(LDFLAGS) Main.o BoostStomp.o StompFrame.o helpers.o
+	$(CXX) Main.o BoostStomp.o StompFrame.o helpers.o -o $@ $(LDFLAGS) 
 #	upx main
 	
 libbooststomp.a:	BoostStomp.o StompFrame.o
