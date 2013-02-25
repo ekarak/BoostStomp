@@ -305,8 +305,8 @@ namespace STOMP {
   // ------------------------------------------
   {
 	  if (m_rcvd_frame != NULL) {
-		  pfnStompCommandHandler_t handler = cmd_map[m_rcvd_frame->command()];
-		  if (handler != NULL) {
+		  // is there a declared handler for the command in the received STOMP frame?
+		  if (pfnStompCommandHandler_t handler = cmd_map[m_rcvd_frame->command()]) {
 			  //debug_print(boost::format("-- consume_frame: calling %1% command handler") % m_rcvd_frame->command());
 			  // call STOMP command handler
 			  (this->*handler)();
