@@ -6,6 +6,8 @@
 
 .SUFFIXES:	.cpp .o .a .s
 
+CC     := clang
+CXX    := clang++
 LD     := ld
 AR     := ar rc
 RANLIB := ranlib
@@ -28,7 +30,7 @@ INCLUDES := -I .
 %.o : %.c
 	$(CC) $(CFLAGS) $(INCLUDES) -o $@ $<
 
-all: main libbooststomp.a libbooststomp.so
+all: main static_lib shared_lib
         
 helpers.o:   helpers.cpp  helpers.h
 	$(CXX) $(CFLAGS) -c helpers.cpp $(INCLUDES)
@@ -46,11 +48,23 @@ main:   Main.o  BoostStomp.o StompFrame.o helpers.o
 	$(CXX) -o $@ Main.o BoostStomp.o StompFrame.o helpers.o $(LDFLAGS)
 #	upx main
 	
-libbooststomp.a:	BoostStomp.o StompFrame.o
-	$(AR) $@ BoostStomp.o StompFrame.o helpers.o
+static_lib:	BoostStomp.o StompFrame.o
+	$(AR) libbooststomp.a BoostStomp.o StompFrame.o helpers.o
 	
-libbooststomp.so:
-	$(CXX) -shared -Wl,-soname,$@ -o $@  BoostStomp.o StompFrame.o helpers.o
+shared_lib:
+	$(CXX) -shared -Wl,-soname,libbooststomp.so.1.0 -o libbooststomp.so.1.0  BoostStomp.o StompFrame.o helpers.o
+
+install: static_lib shared_lib
+	install -d $(DESTDIR)/usr/include/booststomp
+	install -d $(DESTDIR)/usr/lib
+	install libbooststomp.so.1.0 $(DESTDIR)/usr/lib
+	install libbooststomp.a $(DESTDIR)/usr/lib
+	cp -r *.h $(DESTDIR)/usr/include/booststomp
+	cp -r *.hpp $(DESTDIR)/usr/include/booststomp
+	
+uninstall:
+	rm -rf $(DESTDIR)/usr/include/booststomp
+	rm -f $(DESTDIR)/usr/lib/libbooststomp*
 
 dist:	main
 	rm -f BoostStomp.tar.gz

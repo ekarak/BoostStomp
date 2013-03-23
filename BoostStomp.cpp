@@ -158,7 +158,7 @@ namespace STOMP {
   {
     if (endpoint_iter != tcp::resolver::iterator())
     {
-      //debug_print(boost::format("TCP: Trying %1%...") % endpoint_iter->endpoint() );
+      debug_print(boost::format("STOMP: Connecting to %1%...") % endpoint_iter->endpoint() );
 
       // Try TCP connection synchronously (the first frame to send is the CONNECT frame)
       boost::system::error_code ec;
