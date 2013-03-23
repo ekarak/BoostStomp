@@ -6,8 +6,17 @@
 
 .SUFFIXES:	.cpp .o .a .s
 
+# Sorry gcc, clang is way better.
+# Use it if found in path...
+CLANG := $(shell which clang)
+ifeq ($(CLANG),)
+CC     := gcc
+CXX    := g++
+else
 CC     := clang
 CXX    := clang++
+endif
+
 LD     := ld
 AR     := ar rc
 RANLIB := ranlib
