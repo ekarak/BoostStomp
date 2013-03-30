@@ -26,12 +26,15 @@ TARGET := DEBUG
 
 DEBUG_CFLAGS    := -Wall -Wno-format -g -DDEBUG -Werror -O0 -DDEBUG_STOMP -DBOOST_ASIO_ENABLE_BUFFER_DEBUGGING
 RELEASE_CFLAGS  := -Wall -Wno-unknown-pragmas -Wno-format -O3 -DNDEBUG
+CFLAGS	:= -c $($(TARGET)_CFLAGS) -fPIC
 
 DEBUG_LDFLAGS	:= -g
+RELEASE_LDFLAGS := 
+LDFLAGS	:= $($(TARGET)_LDFLAGS) -lboost_system -lboost_thread
 
-CFLAGS	:= -c $($(TARGET)_CFLAGS) -fPIC
-LDFLAGS	:= $($(TARGET)_LDFLAGS) -L/usr/lib/ -L/usr/local/lib -lboost_system -lboost_thread
 INCLUDES := -I .
+DESTDIR := /usr/local
+VERSION := 1.0
 
 %.o : %.cpp
 	$(CXX) $(CFLAGS) $(INCLUDES) -o $@ $<
@@ -61,19 +64,22 @@ static_lib:	BoostStomp.o StompFrame.o
 	$(AR) libbooststomp.a BoostStomp.o StompFrame.o helpers.o
 	
 shared_lib:
-	$(CXX) -shared -Wl,-soname,libbooststomp.so.1.0 -o libbooststomp.so.1.0  BoostStomp.o StompFrame.o helpers.o
+	$(CXX) -o libbooststomp.so.$(VERSION) BoostStomp.o StompFrame.o helpers.o \
+	-shared -Wl,-soname,libbooststomp.so.$(VERSION) $(LDFLAGS) 
 
 install: static_lib shared_lib
-	install -d $(DESTDIR)/usr/include/booststomp
-	install -d $(DESTDIR)/usr/lib
-	install libbooststomp.so.1.0 $(DESTDIR)/usr/lib
-	install libbooststomp.a $(DESTDIR)/usr/lib
-	cp -r *.h $(DESTDIR)/usr/include/booststomp
-	cp -r *.hpp $(DESTDIR)/usr/include/booststomp
+	install -d $(DESTDIR)/include/booststomp
+	install -d $(DESTDIR)/lib
+	install libbooststomp.so.$(VERSION) $(DESTDIR)/lib
+	ln -sf  $(DESTDIR)/lib/libbooststomp.so.$(VERSION) $(DESTDIR)/lib/libbooststomp.so 
+	install libbooststomp.a $(DESTDIR)/lib
+	ldconfig $(DESTDIR)/lib
+	cp -r *.h   $(DESTDIR)/include/booststomp
+	cp -r *.hpp $(DESTDIR)/include/booststomp
 	
 uninstall:
-	rm -rf $(DESTDIR)/usr/include/booststomp
-	rm -f $(DESTDIR)/usr/lib/libbooststomp*
+	rm -rf $(DESTDIR)/include/booststomp
+	rm -f $(DESTDIR)/lib/libbooststomp*
 
 dist:	main
 	rm -f BoostStomp.tar.gz
