@@ -1,6 +1,6 @@
-/************
-BoostStomp
-/************
+ BoostStomp - a STOMP (Simple Text Oriented Messaging Protocol) client
+----------------------------------------------------
+
 A simple C++ STOMP client ( http://stomp.github.com ), 
 written with standard STL and boost ( http://www.boost.org )
 
@@ -12,9 +12,22 @@ libboost_system1.xx-dev
 libboost_thread1.xx (thread support)
 libboost_thread1.xx-dev
 
+For Ubuntu, the naming of the packages differs slightly, 
+try searching for them in Synaptic or aptitude. 
+Any Boost's version over 1.35 will do.
+
+EXAMPLE OF USAGE
+============
 There is an example of usage, in Main.cpp. It gets built by default, 
 along with the shared & static versions of the booststomp library.
-Usage is simple: construct a BoostStomp object passing it the hostname 
+A more advanced example can be found in Thrift4OZW's Main.cpp
+https://github.com/ekarak/Thrift4OZW/blob/master/Main.cpp
+
+Usage is simple, include the BoostStomp.hpp header in your program,
+
+    #include "BoostStomp.hpp"
+
+then you can construct a BoostStomp object passing it the hostname 
 and port of the STOMP server:
 
     string  stomp_host = "localhost";
@@ -43,9 +56,31 @@ and port of the STOMP server:
 	
 You must remember at all times that since we are using an asynchronous i/o
 model,  any messages sent via BoostStomp are _not_ guaranteed to succeed.
-
 Future versions of the library will support overloaded versions with completion
 callbacks (following th boost::asio model).
 
-April 2012,
-Elias Karakoulakis
+1) Compile the library with:
+make
+
+2) Install it into your system with:
+sudo make install
+
+Copyright (c) 2012-2013 Elias Karakoulakis <elias.karakoulakis@gmail.com>
+
+SOFTWARE NOTICE AND LICENSE
+
+BoostStomp is free software: you can redistribute it and/or modify
+it under the terms of the GNU Lesser General Public License as published
+by the Free Software Foundation, either version 3 of the License,
+or (at your option) any later version.
+
+BoostStomp is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU Lesser General Public License for more details.
+
+You should have received a copy of the GNU Lesser General Public License
+along with BoostStomp.  If not, see <http://www.gnu.org/licenses/>.
+
+for more information on the LGPL, see:
+http://en.wikipedia.org/wiki/GNU_Lesser_General_Public_License
