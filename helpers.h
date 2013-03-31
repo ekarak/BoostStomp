@@ -20,9 +20,7 @@ using namespace std;
 // helper function
 void hexdump(boost::asio::streambuf&);
 void hexdump(const void *ptr, int buflen);
-void debug_print(boost::format& fmt);
-void debug_print(string& str);
-void debug_print(const char* str);
+
 
 // helper template function for pretty-printing just about anything
 template <class T>

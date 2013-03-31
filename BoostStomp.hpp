@@ -102,6 +102,7 @@ namespace STOMP {
             boost::asio::streambuf m_heartbeat;
             string	m_protocol_version;
             int 	m_transaction_id;
+            bool   m_showDebug;
 
             //
             bool send_frame( Frame* _frame );
@@ -131,6 +132,10 @@ namespace STOMP {
 
             void worker( boost::shared_ptr< boost::asio::io_service > io_service );
 
+            void debug_print(boost::format& fmt);
+            void debug_print(string& str);
+            void debug_print(const char* str);
+            
         //----------------
         public:
         //----------------
@@ -144,6 +149,9 @@ namespace STOMP {
             void start();
             void stop();
 
+            // Set or clear the debug flag
+            void enable_debug_msgs(bool b);
+            
             // thread-safe methods called from outside the thread loop
             template <typename BodyType>
             bool send      ( std::string& _topic, hdrmap _headers, BodyType& _body, pfnOnStompMessage_t callback = NULL)  {

@@ -42,7 +42,9 @@ namespace STOMP {
   using namespace boost::asio;
   using boost::asio::ip::tcp;
 
-
+  // used by debug_print
+  boost::mutex global_stream_lock;
+  
   // ----------------------------
   // constructor
   // ----------------------------
@@ -70,6 +72,8 @@ namespace STOMP {
 		cmd_map["MESSAGE"] 	= &BoostStomp::process_MESSAGE;
 		cmd_map["RECEIPT"] 	= &BoostStomp::process_RECEIPT;
 		cmd_map["ERROR"] 	= &BoostStomp::process_ERROR;
+		// set default debug flag
+		m_showDebug = false;
   }
 
 
@@ -556,4 +560,28 @@ namespace STOMP {
 	  return(send_frame(new Frame( "ABORT", hm )));
   };
 
+  // ------------------------------------------
+  void BoostStomp::enable_debug_msgs(bool b)
+  // ------------------------------------------
+  {
+      m_showDebug = b;
+  }
+  
+  void BoostStomp::debug_print(string& str) {
+	  boost::format fmt = boost::format(str.c_str());
+	  debug_print(fmt);
+  }
+
+  void BoostStomp::debug_print(const char* cstr) {
+	  boost::format fmt = boost::format(cstr);
+  	  BoostStomp::debug_print(fmt);
+  }
+
+  void BoostStomp::debug_print(boost::format& fmt) {
+      if (m_showDebug) {
+	    global_stream_lock.lock();
+	    std::cout << "[" << boost::this_thread::get_id() << "] BoostStomp:" << fmt.str() << endl;
+	    global_stream_lock.unlock();
+	 }
+  }
 } // end namespace STOMP
