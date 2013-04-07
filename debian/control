@@ -1,18 +1,22 @@
-Source: booststomp
+Source: libbooststomp
 Maintainer: Elias Karakoulakis <elias.karakoulakis@gmail.com>
-Section: devel
+Section: source
 Priority: optional
-Build-Depends: debhelper (>= 8), g++ (>= 4.4), quilt, libboost-dev, libboost-system-dev, libboost-thread-dev
+Build-Depends: debhelper (>= 8), g++ (>= 4.4), quilt, libboost-dev
 Standards-Version: 3.9.3
+Homepage: https://github.com/ekarak/BoostStomp
+Vcs-Git: https://github.com/ekarak/BoostStomp.git
 
-Package: libbooststomp1.0
+Package: libbooststomp
 Section: libs
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}, libboost-system, libboost-thread
-Description: This provides a C++ Boost-ASIO based STOMP client
+Depends: ${shlibs:Depends}, ${misc:Depends}, libboost-dev
+Description: This library provides a C++ Boost-ASIO based STOMP client
 
-Package: libbooststomp1.0-dev
+Package: libbooststomp-dev
 Section: libdevel
-Depends: ${misc:Depends}, libbooststomp1.0
+Depends: ${misc:Depends}, libbooststomp (= ${binary:Version})
 Architecture: any
 Description: Development header files for the BoostStomp library
+
+

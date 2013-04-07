@@ -21,10 +21,13 @@ LD     := ld
 AR     := ar rc
 RANLIB := ranlib
 
-# Change for DEBUG or RELEASE
-TARGET := DEBUG
+# TARGET may be DEBUG or RELEASE
+ifeq ($(TARGET),"")
+	TARGET := DEBUG
+endif
 
-DEBUG_CFLAGS    := -Wall -Wno-format -g -DDEBUG -Werror -O0 -DDEBUG_STOMP -DBOOST_ASIO_ENABLE_BUFFER_DEBUGGING
+
+DEBUG_CFLAGS    := -Wno-format -g -DDEBUG -Werror -O0 -DDEBUG_STOMP -DBOOST_ASIO_ENABLE_BUFFER_DEBUGGING
 RELEASE_CFLAGS  := -Wall -Wno-unknown-pragmas -Wno-format -O3 -DNDEBUG
 CFLAGS	:= -c $($(TARGET)_CFLAGS) -fPIC
 
@@ -62,10 +65,16 @@ main:   Main.o  BoostStomp.o StompFrame.o helpers.o
 	
 static_lib:	BoostStomp.o StompFrame.o
 	$(AR) libbooststomp.a BoostStomp.o StompFrame.o helpers.o
+ifeq ('$(TARGET)','RELEASE')
+	strip libbooststomp.a
+endif
 	
 shared_lib:
 	$(CXX) -o libbooststomp.so.$(VERSION) BoostStomp.o StompFrame.o helpers.o \
-	-shared -Wl,-soname,libbooststomp.so.$(VERSION) $(LDFLAGS) 
+	-shared -Wl,-soname,libbooststomp.so.$(VERSION) $(LDFLAGS)
+ifeq ('$(TARGET)','RELEASE')
+	strip libbooststomp.so*
+endif
 
 install: static_lib shared_lib
 	install -d $(DESTDIR)/include/booststomp
@@ -90,4 +99,4 @@ bindist: main
 	tar -c --exclude=".git" --exclude ".svn" -hvzf BoostStomp_bin_`uname -i`.tar.gz main *.a *.so license/ README*
 
 clean:
-	rm -f main *.o *.a *.so
+	rm -f main *.o *.a libbooststomp.so*
