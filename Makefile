@@ -82,9 +82,10 @@ install: static_lib shared_lib
 	install libbooststomp.so.$(VERSION) $(DESTDIR)/lib
 	ln -sf  $(DESTDIR)/lib/libbooststomp.so.$(VERSION) $(DESTDIR)/lib/libbooststomp.so 
 	install libbooststomp.a $(DESTDIR)/lib
-	ldconfig $(DESTDIR)/lib
 	cp -r *.h   $(DESTDIR)/include/booststomp
 	cp -r *.hpp $(DESTDIR)/include/booststomp
+	echo "Dont forget to run: "
+	echo "    sudo ldconfig $(DESTDIR)/lib "
 	
 uninstall:
 	rm -rf $(DESTDIR)/include/booststomp
