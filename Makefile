@@ -7,10 +7,13 @@
 .SUFFIXES:	.cpp .o .a .s
 .PHONY: all
 
+include Make-globals
+
 all: 
 	$(MAKE) -C src/
 
-install: static_lib shared_lib
+install: 
+	$(MAKE) -C src/
 	install -d $(DESTDIR)/include/booststomp
 	install -d $(DESTDIR)/lib
 	install src/libbooststomp.so.$(VERSION) $(DESTDIR)/lib
@@ -39,13 +42,10 @@ valgrind-test:
 test: valgrind-test
 
 clean:
-	cd src; rm main *.o *.a libbooststomp.so*
+	cd src; rm -f main *.o *.a libbooststomp.so*
 
 deb:
-	cd ..
 	git clone --depth 0 git://github.com/ekarak/BoostStomp.git libbooststomp-$(VERSION)
 	tar --exclude-vcs -czvf libbooststomp_$(VERSION).orig.tar.gz libbooststomp-$(VERSION)
-	cd libbooststomp-$(VERSION)
-	dpkg-buildpackage
-	cd ..
+	cd libbooststomp-$(VERSION) && dpkg-buildpackage
 	rm -rf libbooststomp-$(VERSION)

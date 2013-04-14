@@ -578,10 +578,12 @@ namespace STOMP {
   }
 
   void BoostStomp::debug_print(boost::format& fmt) {
+      using namespace boost::posix_time;
       if (m_showDebug) {
-	    global_stream_lock.lock();
-	    std::cout << "[" << boost::this_thread::get_id() << "] BoostStomp:" << fmt.str() << endl;
-	    global_stream_lock.unlock();
+        ptime now = second_clock::universal_time();
+        global_stream_lock.lock();
+        std::cout << "[" << FormatTime(now) << ": " << boost::this_thread::get_id() << "] BoostStomp:" << fmt.str() << endl;
+        global_stream_lock.unlock();
 	 }
   }
 } // end namespace STOMP

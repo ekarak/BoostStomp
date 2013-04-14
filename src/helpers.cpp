@@ -32,4 +32,14 @@ void hexdump(boost::asio::streambuf& sb) {
     hexdump(rawdata, sb.size());
 }
 
-
+std::string FormatTime(boost::posix_time::ptime& now)
+{
+    using namespace boost::posix_time;
+    static std::locale loc(std::wcout.getloc(),
+                         new time_facet("%H:%M:%S"));
+    
+    std::basic_stringstream<char> ss;
+    ss.imbue(loc);
+    ss << now;
+    return ss.str();
+}

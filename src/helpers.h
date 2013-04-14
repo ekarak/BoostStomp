@@ -12,6 +12,7 @@
 #include <boost/format.hpp>
 #include <boost/thread.hpp>
 #include <boost/thread/mutex.hpp>
+#include <boost/date_time/posix_time/posix_time.hpp>
 #include <string>
 #include <queue>
 
@@ -21,6 +22,7 @@ using namespace std;
 void hexdump(boost::asio::streambuf&);
 void hexdump(const void *ptr, int buflen);
 
+std::string FormatTime(boost::posix_time::ptime&);
 
 // helper template function for pretty-printing just about anything
 template <class T>
