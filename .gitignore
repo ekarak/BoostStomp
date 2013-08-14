@@ -1,6 +1,5 @@
-/.build
-/src/.build
-*.*~
+*~
 *.so.*
 *.o
 *.a
+/src/main

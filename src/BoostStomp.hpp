@@ -147,6 +147,7 @@ namespace STOMP {
             stomp_server_command_map_t	cmd_map;
 
             void start();
+            void start(string& login, string& passcode);
             void stop();
 
             // Set or clear the debug flag

@@ -114,7 +114,7 @@ namespace STOMP {
 
   // Called by the user of the client class to initiate the connection process.
   // The endpoint iterator will have been obtained using a tcp::resolver.
-  void BoostStomp::start()
+  void BoostStomp::start(string& login, string& passcode)
   {
 	debug_print("starting...");
 	m_stopped = false;
@@ -125,7 +125,13 @@ namespace STOMP {
 	  		boost::asio::ip::resolver_query_base::numeric_service)
 	);
     // Start the connect actor.
-    start_connect(endpoint_iter);
+    start_connect(endpoint_iter, login, passcode);
+  }
+
+  void BoostStomp::start()
+  {
+    std::string empty = "";
+    start(empty, empty);
   }
 
   // This function terminates all the actors to shut down the connection. It
@@ -190,7 +196,7 @@ namespace STOMP {
           // before starting a new one.
           m_socket->close();
           // Try the next available endpoint.
-          start_connect(++endpoint_iter);
+          start_connect(++endpoint_iter, login, passcode);
       }
     }
     else
