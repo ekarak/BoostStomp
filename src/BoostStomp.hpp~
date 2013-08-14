@@ -114,7 +114,7 @@ namespace STOMP {
             void process_RECEIPT();
             void process_ERROR();
 
-            void start_connect(tcp::resolver::iterator endpoint_iter, string& login, string& passcode);
+            void start_connect(tcp::resolver::iterator endpoint_iter);
             void handle_connect(const boost::system::error_code& ec, tcp::resolver::iterator endpoint_iter);
 
             //TODO: void setup_stomp_heartbeat(int cx, int cy);
