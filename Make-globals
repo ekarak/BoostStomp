@@ -25,7 +25,7 @@ CFLAGS	:= -c $($(TARGET)_CFLAGS) -fPIC
 
 DEBUG_LDFLAGS	:= -g
 RELEASE_LDFLAGS := 
-LDFLAGS	:= $($(TARGET)_LDFLAGS) -lboost_system -lboost_thread
+LDFLAGS	:= $($(TARGET)_LDFLAGS) -lboost_system -lboost_thread -lpthread
 
 INCLUDES := -I .
 DESTDIR := /usr/local
