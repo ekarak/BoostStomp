@@ -181,8 +181,10 @@ namespace STOMP {
     	  hdrmap headers;
     	  headers["accept-version"] = "1.1";
     	  headers["host"] = m_hostname;
-          headers["login"] = login;
-          headers["passcode"] = passcode;
+          if (!login.empty()) {
+			headers["login"] = login;
+            headers["passcode"] = passcode;
+		  }
     	  Frame frame( "CONNECT", headers );
     	  frame.encode(stomp_request);
     	  debug_print("Sending CONNECT frame...");
