@@ -114,7 +114,7 @@ namespace STOMP {
             void process_RECEIPT();
             void process_ERROR();
 
-            void start_connect(tcp::resolver::iterator endpoint_iter);
+            void start_connect(tcp::resolver::iterator endpoint_iter, string& login, string& passcode);
             void handle_connect(const boost::system::error_code& ec, tcp::resolver::iterator endpoint_iter);
 
             //TODO: void setup_stomp_heartbeat(int cx, int cy);
@@ -147,6 +147,7 @@ namespace STOMP {
             stomp_server_command_map_t	cmd_map;
 
             void start();
+            void start(string& login, string& passcode);
             void stop();
 
             // Set or clear the debug flag
